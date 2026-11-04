@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 旅伴重构器前端
 
-## Getting Started
+当前版本为 A（ui 分支组件）与 B（interaction 分支请求/交互层）的集成版：
+UI 组件来自 A，请求、状态、持久化和分享逻辑来自 B。
 
-First, run the development server:
+## 启动
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 `http://127.0.0.1:3000`。
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 环境变量
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+复制 `.env.example` 为 `.env.local`：
 
-## Learn More
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_USE_MOCK=false
+```
 
-To learn more about Next.js, take a look at the following resources:
+默认连接真实后端。只有后端不可用、需要离线演示时才临时设置
+`NEXT_PUBLIC_USE_MOCK=true`。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## B 已接入
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `POST /api/init_trip`：创建行程。
+- `GET /api/trip/{trip_id}`：刷新或分享链接恢复。
+- `POST /api/parse_order`：订单文本生成锚点。
+- `POST /api/recompute`：整体替换重算后的行程块并高亮 `changed_ids`。
+- `POST /api/search`：搜索证据卡。
+- `GET /health`：健康检查。
 
-## Deploy on Vercel
+请求层位于 `lib/api.js`，Mock 位于 `lib/mock-api.js`，交互状态位于
+`hooks/useTripController.js`。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+接口版本为 v0.7：创建请求使用 `query`；行程块支持 `date` 和 `待定`；订单响应使用
+`{ success, new_block }`；重算请求使用 `change_desc`，响应使用
+`{ changed_ids, trip_state }`；搜索结果使用 `highlights` 和 `pitfalls`。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 检查
+
+```bash
+npm run lint
+npm run build
+```

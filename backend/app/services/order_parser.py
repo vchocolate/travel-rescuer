@@ -35,7 +35,9 @@ SYSTEM_PROMPT = """你是订单信息提取器。从酒店、机票、火车票�
 4. activity：订单活动名称，必须包含酒店名、航班号或门票名；没有则返回 null。
 5. location：订单中的地址、城市或区域；没有则返回 null。
 6. day：能判断是行程第几天时返回整数，否则返回 1。
-7. 只输出 JSON，不要 Markdown，不要解释。"""
+7. 图片可能是酒店预订短信或订单截图，请逐行识别中文文字，不要依赖文件名；字段不清晰或不存在时返回 null，不要猜。
+8. 酒店订单请重点识别酒店名、入住/离店日期、入住时间和详细地址。
+9. 只输出 JSON，不要 Markdown，不要解释。"""
 
 
 class ParsedOrder(BaseModel):
@@ -60,9 +62,18 @@ class ParsedOrder(BaseModel):
     def validate_date(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if not DATE_RE.fullmatch(value):
-            raise ValueError("date 必须为 YYYY-MM-DD 或 null")
-        return value
+
+        if DATE_RE.fullmatch(value):
+            return value
+
+        match = re.fullmatch(
+            r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日", value
+        )
+        if match:
+            year = int(match.group(1)) if match.group(1) else date.today().year
+            return f"{year:04d}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+
+        raise ValueError("date 必须为 YYYY-MM-DD、M月D日 或 null")
 
 
 class OrderParseError(RuntimeError):
@@ -121,7 +132,11 @@ async def parse_order_image(image_data_url: str) -> ParsedOrder:
     today = date.today().isoformat()
 
     for attempt in range(2):
-        user_text = f"当前日期：{today}\n请识别这张订单截图并提取信息。"
+        user_text = (
+            f"当前日期：{today}\n"
+            "请识别这张订单截图并提取信息，重点识别酒店名、入住/离店日期、"
+            "入住时间和详细地址。"
+        )
         if attempt == 1:
             user_text += _repair_note()
 

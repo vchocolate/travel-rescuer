@@ -225,10 +225,11 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 
 当前已接入博查：
 
-- 先调用 `POST https://api.bochaai.com/v1/web-search`，请求体 `{"query": ..., "summary": true, "count": 3}`。
-- 从 `data.webPages.value` 提取 `name`、`url`、`snippet`（或 `summary`），封装成 `SearchEvidence`。
-- 再交给 LLM 整理，并用 `SearchResultBundle` 做 `model_validate_json()` 校验。
-- 博查超时 15 秒，LLM 超时 90 秒；最长约 105 秒。
+- 先调用一次 LLM 做 Query Rewrite；保留原始 query 作为兜底，不丢弃原始实体。
+- 用改写后的 query 和原始 query 分别请求博查（并发），按 URL 去重。
+- 请求体 `{"query": ..., "summary": true, "count": 3}`，从 `data.webPages.value` 提取 `name`、`url`、`snippet`（或 `summary`），封装成 `SearchEvidence`。
+- 将合并后的 evidence 与**原始问题**一起交给总结模型，严格按原始意图提炼，并用 `SearchResultBundle` 做 `model_validate_json()` 校验。
+- Query Rewrite 超时 30 秒，博查超时 15 秒，总结超时 90 秒；前端超时 180 秒。
 - 未配置 `BOCHA_API_KEY`、博查失败、LLM 校验失败：返回 `200 []`，不抛错。
 - 结果 URL 必须来自博查 evidence，否则后端会丢弃。
 
