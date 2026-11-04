@@ -57,6 +57,29 @@ class ParseOrderRequest(BaseModel):
 class ParseOrderResponse(BaseModel):
     success: bool
     new_block: BlockSchema | None = None
+    message: str | None = None
+
+
+IntentType = Literal["order", "schedule", "recompute", "search", "clarify"]
+
+
+class IntentRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class IntentResponse(BaseModel):
+    intent: IntentType
+    message: str | None = None
+
+
+class ScheduleRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class ScheduleResponse(BaseModel):
+    success: bool = True
+    new_block: BlockSchema
+    message: str | None = None
 
 
 class SearchRequest(BaseModel):

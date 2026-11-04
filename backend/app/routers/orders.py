@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Block, Trip
 from ..schemas import BlockSchema, ParseOrderRequest, ParseOrderResponse
+from ..services.block_dates import resolve_day, trip_has_date
 from ..services.llm import (
     LLMError,
     LLMNotConfiguredError,
@@ -148,17 +149,6 @@ async def parse_order(payload: ParseOrderRequest, db: Session = Depends(get_db))
     has_date = bool(parsed.date)
     has_time = bool(parsed.time_slot)
     has_location = bool(parsed.location)
-    is_anchor = has_date and has_time and has_location
-
-    block = Block(
-        day=parsed.day or 1,
-        date=parsed.date or "",
-        time_slot=parsed.time_slot or "",
-        activity=parsed.activity,
-        location=parsed.location or "",
-        is_anchor=is_anchor,
-        status="anchored" if is_anchor else "normal",
-    )
 
     try:
         trip = db.get(Trip, payload.trip_id)
@@ -175,16 +165,43 @@ async def parse_order(payload: ParseOrderRequest, db: Session = Depends(get_db))
             detail="行程不存在",
         )
 
+    trip_blocks = sorted(trip.blocks, key=lambda item: (item.day, item.time_slot))
+    date_in_trip = trip_has_date(parsed.date, trip_blocks)
+    is_anchor = has_date and has_time and has_location and date_in_trip
+    day = resolve_day(parsed.date, trip_blocks, parsed.day or 1)
+
+    if parsed.date and not date_in_trip:
+        message = (
+            "订单日期不在当前行程范围内，已作为待确认卡片加入，未锁定锚点。"
+        )
+    elif not (has_date and has_time and has_location):
+        message = (
+            "订单缺少日期、时间或地点，已加入行程并标记为待确认，"
+            "不会误锁为锚点。"
+        )
+    else:
+        message = None
+
+    block = Block(
+        day=day,
+        date=parsed.date or "",
+        time_slot=parsed.time_slot or "",
+        activity=parsed.activity,
+        location=parsed.location or "",
+        is_anchor=is_anchor,
+        status="anchored" if is_anchor else "normal",
+    )
+
     try:
         trip.blocks.append(block)
         db.flush()
         db.commit()
     except SQLAlchemyError:
         db.rollback()
-        logger.exception("保存订单锚点失败")
+        logger.exception("保存订单卡片失败")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="保存订单锚点失败",
+            detail="保存订单卡片失败",
         )
 
     db.refresh(block)
@@ -192,4 +209,5 @@ async def parse_order(payload: ParseOrderRequest, db: Session = Depends(get_db))
     return ParseOrderResponse(
         success=is_anchor,
         new_block=BlockSchema.model_validate(block),
+        message=message,
     )

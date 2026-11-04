@@ -15,10 +15,6 @@ const INITIAL_MESSAGES = [
   },
 ];
 
-const ORDER_RE = /(酒店|入住|离店|订单|车票|门票|航班|确认)/;
-const DISRUPTION_RE =
-  /(雨|雪|变|降温|升温|天气|台风|取消|改期|改签|延误|晚点|停运|停飞|关闭|影响|调整|改)/;
-
 function extractDestination(blocks) {
   const counts = new Map();
   for (const block of blocks) {
@@ -65,17 +61,21 @@ export default function Home() {
   const busyLabel =
     controller.busyAction === "initialize"
       ? "正在规划"
-      : controller.busyAction === "parse-order"
-        ? "正在解析订单"
-        : controller.busyAction === "update"
-          ? "正在更新行程"
-          : controller.busyAction === "recompute"
-            ? "正在重算"
-          : controller.busyAction === "search"
-            ? "正在检索"
-            : controller.busyAction === "load"
-              ? "正在恢复行程"
-              : "处理中";
+      : controller.busyAction === "intent"
+        ? "正在判断"
+        : controller.busyAction === "schedule"
+          ? "正在记录日程"
+          : controller.busyAction === "parse-order"
+            ? "正在解析订单"
+            : controller.busyAction === "update"
+              ? "正在更新行程"
+              : controller.busyAction === "recompute"
+                ? "正在重算"
+                : controller.busyAction === "search"
+                  ? "正在检索"
+                  : controller.busyAction === "load"
+                    ? "正在恢复行程"
+                    : "处理中";
 
   const statusLabel = controller.isBusy
     ? busyLabel
@@ -104,88 +104,94 @@ export default function Home() {
     ]);
   };
 
-  async function submitOrderText(orderText) {
-    if (!orderText.trim() || controller.isBusy || !controller.trip) return;
-
-    appendMessage({ role: "user", text: orderText });
-    const result = await controller.parseOrder({ orderText });
-    const block = result?.new_block;
-    if (!result) return;
-
-    appendMessage({
-      role: "ai",
-      text:
-        result.success && block
-          ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
-          : "订单缺少日期、时间或地点，已加入行程并标记为待确认，不会误锁为锚点。",
-    });
-  }
-
-  async function submitSearch(query) {
-    if (!query.trim() || controller.isBusy || !controller.trip) return;
-
-    appendMessage({ role: "user", text: query });
-    const results = await controller.search(query);
-    if (results?.length) {
-      appendMessage({
-        role: "ai",
-        text: `找到 ${results.length} 条证据，请查看来源后决定是否调整行程。`,
-        evidence: results,
-      });
-    } else if (results) {
-      appendMessage({
-        role: "ai",
-        text: "暂时没有找到可用证据，本次不会虚构攻略内容。",
-      });
-    }
-  }
-
-  async function submitRecompute(change) {
-    if (!change.trim() || controller.isBusy || !controller.trip) return;
-
-    appendMessage({ role: "user", text: change });
-    const result = await controller.recompute(change);
-    if (!result) return;
-
-    appendMessage({
-      role: "ai",
-      text:
-        result.message ||
-        (result.changed_ids.length
-          ? "已经保留锚点并更新受影响的活动。变化项已在右侧突出显示。"
-          : "已重新计算，但本次没有需要替换的行程项。"),
-    });
-  }
-
   async function submitMessage(value) {
     const text = value.trim();
     if (!text || controller.isBusy) return;
 
     setInput("");
+    appendMessage({ role: "user", text });
 
     if (!controller.trip) {
-      appendMessage({ role: "user", text });
       const nextTrip = await controller.initializeTrip(text);
       if (nextTrip) {
         appendMessage({
           role: "ai",
-          text: `已生成共 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续填写变化，或使用下方按钮处理订单与搜索。`,
+          text: `已生成共 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续输入变化或粘贴订单文字。`,
         });
       }
       return;
     }
 
-    if (ORDER_RE.test(text)) {
-      await submitOrderText(text);
+    const intentResult = await controller.classifyIntent(text);
+    if (!intentResult) return;
+
+    if (intentResult.intent === "order") {
+      const result = await controller.parseOrder({ orderText: text });
+      if (!result) return;
+      const block = result.new_block;
+      appendMessage({
+        role: "ai",
+        text:
+          result.message ||
+          (result.success && block
+            ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
+            : "订单已加入行程，请检查日期、时间和地点后确认。"),
+      });
       return;
     }
 
-    if (DISRUPTION_RE.test(text)) {
-      await submitRecompute(text);
+    if (intentResult.intent === "schedule") {
+      const result = await controller.addSchedule(text);
+      if (!result) return;
+      const block = result.new_block;
+      appendMessage({
+        role: "ai",
+        text:
+          result.message ||
+          (block
+            ? `已记录日程「${block.activity}」。`
+            : "已记录日程。"),
+      });
       return;
     }
 
-    await submitSearch(text);
+    if (intentResult.intent === "recompute") {
+      const result = await controller.recompute(text);
+      if (!result) return;
+      appendMessage({
+        role: "ai",
+        text:
+          result.message ||
+          (result.changed_ids.length
+            ? "已经保留锚点并更新受影响的活动。变化项已在右侧突出显示。"
+            : "已重新计算，但本次没有需要替换的行程项。"),
+      });
+      return;
+    }
+
+    if (intentResult.intent === "search") {
+      const results = await controller.search(text);
+      if (results?.length) {
+        appendMessage({
+          role: "ai",
+          text: `找到 ${results.length} 条证据，请查看来源后决定是否调整行程。`,
+          evidence: results,
+        });
+      } else if (results) {
+        appendMessage({
+          role: "ai",
+          text: "暂时没有找到可用证据，本次不会虚构攻略内容。",
+        });
+      }
+      return;
+    }
+
+    appendMessage({
+      role: "ai",
+      text:
+        intentResult.message ||
+        "请再具体说明一下：是要记录订单、添加日程，还是调整现有行程？",
+    });
   }
 
   async function copyShareLink() {

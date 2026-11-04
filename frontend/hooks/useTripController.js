@@ -115,6 +115,36 @@ export function useTripController({
     [api, runAction, trip?.trip_id],
   );
 
+  const mergeBlock = useCallback((block) => {
+    setTrip((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        blocks: current.blocks
+          .filter((item) => item.block_id !== block.block_id)
+          .concat(block)
+          .sort((left, right) =>
+            `${left.day}-${left.time_slot}`.localeCompare(
+              `${right.day}-${right.time_slot}`,
+            ),
+          ),
+      };
+    });
+  }, []);
+
+  const classifyIntent = useCallback(
+    async (text) => {
+      if (!trip) {
+        setError("请先创建或读取行程");
+        return null;
+      }
+      return runAction("intent", (signal) =>
+        api.classifyIntent({ trip_id: trip.trip_id, text }, signal),
+      );
+    },
+    [api, runAction, trip],
+  );
+
   const parseOrder = useCallback(
     async ({ orderText } = {}) => {
       if (!trip) {
@@ -136,23 +166,32 @@ export function useTripController({
       const block = result?.new_block;
       if (!block || !mountedRef.current) return result;
 
-      setTrip((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          blocks: current.blocks
-            .filter((item) => item.block_id !== block.block_id)
-            .concat(block)
-            .sort((left, right) =>
-              `${left.day}-${left.time_slot}`.localeCompare(
-                `${right.day}-${right.time_slot}`,
-              ),
-            ),
-        };
-      });
+      mergeBlock(block);
       return result;
     },
-    [api, runAction, trip],
+    [api, mergeBlock, runAction, trip],
+  );
+
+  const addSchedule = useCallback(
+    async (text) => {
+      if (!trip) {
+        setError("请先创建或读取行程");
+        return null;
+      }
+      const result = await runAction(
+        "schedule",
+        (signal) =>
+          api.addSchedule({ trip_id: trip.trip_id, text }, signal),
+        { mutation: true },
+      );
+      const block = result?.new_block;
+      if (!block || !mountedRef.current) return result;
+
+      mergeBlock(block);
+      setLastChangedIds([]);
+      return result;
+    },
+    [api, mergeBlock, runAction, trip],
   );
 
   const recompute = useCallback(
@@ -265,7 +304,9 @@ export function useTripController({
     resetTrip,
     loadTrip,
     initializeTrip,
+    classifyIntent,
     parseOrder,
+    addSchedule,
     recompute,
     updateBlock,
     search,

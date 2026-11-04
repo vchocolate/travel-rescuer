@@ -135,6 +135,30 @@ export const tripApi = {
     });
   },
 
+  classifyIntent(input, signal) {
+    return request(
+      `/api/trip/${encodeURIComponent(input.trip_id)}/intent`,
+      {
+        method: "POST",
+        body: { text: input.text },
+        signal,
+        timeoutMs: 60_000,
+      },
+    );
+  },
+
+  addSchedule(input, signal) {
+    return request(
+      `/api/trip/${encodeURIComponent(input.trip_id)}/schedule`,
+      {
+        method: "POST",
+        body: { text: input.text },
+        signal,
+        timeoutMs: 150_000,
+      },
+    );
+  },
+
   parseOrder(input, signal) {
     return request("/api/parse_order", {
       method: "POST",
