@@ -17,6 +17,13 @@ const INITIAL_MESSAGES = [
 
 const ORDER_RE = /(酒店|入住|离店|订单|车票|门票|航班|确认)/;
 const DISRUPTION_RE = /(雨|下雨|天气|台风|变化|影响|调整|改)/;
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const IMAGE_UPLOAD_ENABLED =
+  process.env.NEXT_PUBLIC_ENABLE_IMAGE_UPLOAD !== "false";
 
 function extractDestination(blocks) {
   const counts = new Map();
@@ -196,8 +203,11 @@ export default function Home() {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      appendMessage({ role: "ai", text: "只支持图片格式的订单截图。" });
+    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+      appendMessage({
+        role: "ai",
+        text: "图片识别仅支持 JPG、PNG、WebP，请换图或直接粘贴订单文字。",
+      });
       return;
     }
 
@@ -396,6 +406,7 @@ export default function Home() {
           onChange={setInput}
           onSubmit={submitMessage}
           onUpload={uploadOrderImage}
+          enableImageUpload={IMAGE_UPLOAD_ENABLED}
           quickActions={quickActions}
           isLoading={controller.isBusy}
           error={controller.error || ""}

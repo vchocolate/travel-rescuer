@@ -19,7 +19,10 @@ npm run dev
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_USE_MOCK=false
+NEXT_PUBLIC_ENABLE_IMAGE_UPLOAD=true
 ```
+
+图片识别不稳定时可临时设为 `false`，上传入口会隐藏并提示粘贴文字。
 
 默认连接真实后端。只有后端不可用、需要离线演示时才临时设置
 `NEXT_PUBLIC_USE_MOCK=true`。

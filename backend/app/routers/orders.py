@@ -75,6 +75,14 @@ def _prepare_image_data_url(payload: ParseOrderRequest) -> str:
             detail="图片不能超过 5MB",
         )
 
+    logger.warning(
+        "parse_order image: mime=%s base64_chars=%d bytes=%d prefix=%s",
+        mime,
+        len(raw),
+        len(decoded),
+        raw[:32],
+    )
+
     return f"data:{mime};base64,{raw}"
 
 
@@ -131,7 +139,10 @@ async def parse_order(payload: ParseOrderRequest, db: Session = Depends(get_db))
     if not parsed.activity:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="未能识别订单活动名称，请补充订单文本或图片",
+            detail=(
+                "未识别到订单信息，请确认图片是酒店、机票或门票订单截图，"
+                "或直接粘贴订单文字"
+            ),
         )
 
     has_date = bool(parsed.date)

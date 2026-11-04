@@ -49,7 +49,7 @@ export default function EvidenceCard({ result }) {
 
       {result.highlights?.length > 0 && (
         <div className="mt-2.5">
-          <p className="text-[10px] font-bold tracking-[0.1em] text-emerald-700">亮点</p>
+          <p className="text-[10px] font-bold tracking-[0.1em] text-emerald-700">核心要点</p>
           <ul className="mt-1 space-y-1">
             {result.highlights.map((item) => (
               <li key={item} className="flex gap-1.5 text-xs leading-5 text-slate-700">
@@ -63,7 +63,7 @@ export default function EvidenceCard({ result }) {
 
       {result.pitfalls?.length > 0 && (
         <div className="mt-2.5">
-          <p className="text-[10px] font-bold tracking-[0.1em] text-amber-700">避坑</p>
+          <p className="text-[10px] font-bold tracking-[0.1em] text-amber-700">提醒</p>
           <ul className="mt-1 space-y-1">
             {result.pitfalls.map((item) => (
               <li key={item} className="flex gap-1.5 text-xs leading-5 text-slate-700">

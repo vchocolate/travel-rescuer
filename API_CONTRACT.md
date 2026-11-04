@@ -354,7 +354,7 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 - **破坏性变更**：`parse_order` 响应由扁平 Block + `missing_fields` 改为 `{success, new_block}`。
 - 图片使用 `FileReader` 转 base64，单张不超过 5MB；`501` 时提示视觉模型未配置，不要自动重试。
 - `BlockSchema.date` 默认 `待定`；后端会把数据库 `null` / 空字符串统一转成 `待定`，前端直接展示即可。新 AI 数据仍必须是 `YYYY-MM-DD`。
-- `init_trip` 可能耗时 10–120 秒，`parse_order` 可能耗时 10–90 秒，需要 loading 和超时处理。
+- `init_trip` 可能耗时 10–120 秒，`parse_order` 文本约 10–60 秒、图片最多约 210 秒，需要 loading 和超时处理。
 - 所有已实现接口的 LLM 输出都经过 Pydantic 严格校验；失败不会写数据库，前端按 `400/422/502/503` 显示可理解错误。
 - 字段名或类型如需调整，先通知 A/B 并同步更新 Mock。
 

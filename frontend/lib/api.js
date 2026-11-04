@@ -140,7 +140,7 @@ export const tripApi = {
       method: "POST",
       body: input,
       signal,
-      timeoutMs: 90_000,
+      timeoutMs: 210_000,
     });
   },
 

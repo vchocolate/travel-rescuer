@@ -37,7 +37,8 @@ SYSTEM_PROMPT = """你是订单信息提取器。从酒店、机票、火车票�
 6. day：能判断是行程第几天时返回整数，否则返回 1。
 7. 图片可能是酒店预订短信或订单截图，请逐行识别中文文字，不要依赖文件名；字段不清晰或不存在时返回 null，不要猜。
 8. 酒店订单请重点识别酒店名、入住/离店日期、入住时间和详细地址。
-9. 只输出 JSON，不要 Markdown，不要解释。"""
+9. 如果图片不是订单截图、画面模糊或没有订单信息，activity/date/time/location 全部返回 null，不要编造订单内容。
+10. 只输出 JSON，不要 Markdown，不要解释。"""
 
 
 class ParsedOrder(BaseModel):
@@ -106,7 +107,7 @@ async def parse_order_text(order_text: str) -> ParsedOrder:
                 SYSTEM_PROMPT,
                 user_text,
                 max_tokens=4096,
-                timeout=90,
+                timeout=100,
             )
         except LLMNotConfiguredError:
             raise
@@ -147,7 +148,7 @@ async def parse_order_image(image_data_url: str) -> ParsedOrder:
                 user_text,
                 image_data_url=image_data_url,
                 max_tokens=4096,
-                timeout=90,
+                timeout=100,
                 model=vision_model(),
                 base_url=vision_base_url(),
                 api_key=vision_api_key(),
