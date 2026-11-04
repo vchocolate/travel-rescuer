@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..models import Block, Trip
-from ..schemas import BlockSchema, InitTripRequest, TripState
+from ..schemas import (
+    BlockSchema,
+    InitTripRequest,
+    TripState,
+    UpdateBlockRequest,
+)
 from ..services.llm import LLMNotConfiguredError
 from ..services.trip_planner import ItineraryGenerationError, generate_blocks
 
@@ -133,5 +138,137 @@ def get_trip(trip_id: str, db: Session = Depends(get_db)):
     )
     return TripState(
         trip_id=trip.id,
+        blocks=[BlockSchema.model_validate(block) for block in blocks],
+    )
+
+
+@router.post("/trip/{trip_id}/update", response_model=TripState)
+def update_trip_block(
+    trip_id: str,
+    payload: UpdateBlockRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        trip_uuid = UUID(trip_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found",
+        )
+
+    try:
+        block_uuid = UUID(payload.block_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Block not found",
+        )
+
+    target_uuid = None
+    if payload.action == "confirm_replace":
+        if not payload.target_block_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="target_block_id is required for confirm_replace",
+            )
+        try:
+            target_uuid = UUID(payload.target_block_id)
+        except (ValueError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target block not found",
+            )
+        if target_uuid == block_uuid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="block_id and target_block_id must differ",
+            )
+
+    try:
+        with db.begin():
+            trip = (
+                db.execute(
+                    select(Trip)
+                    .options(selectinload(Trip.blocks))
+                    .where(Trip.id == trip_uuid)
+                )
+                .scalar_one_or_none()
+            )
+            if trip is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Trip not found",
+                )
+
+            blocks_by_id = {str(block.id): block for block in trip.blocks}
+            block = blocks_by_id.get(str(block_uuid))
+            if block is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Block not found",
+                )
+
+            if payload.action == "delete":
+                db.delete(block)
+            elif payload.action == "lock":
+                block.is_anchor = True
+                block.status = "anchored"
+            elif payload.action == "unlock":
+                block.is_anchor = False
+                block.status = "normal"
+            else:
+                target = blocks_by_id.get(str(target_uuid))
+                if target is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Target block not found",
+                    )
+                if target.status != "candidate":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Target block is not a candidate",
+                    )
+                db.delete(block)
+                target.status = "normal"
+
+            db.flush()
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("更新行程块失败")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="更新行程失败",
+        )
+
+    try:
+        stored_trip = (
+            db.execute(
+                select(Trip)
+                .options(selectinload(Trip.blocks))
+                .where(Trip.id == trip_uuid)
+            )
+            .scalar_one_or_none()
+        )
+    except SQLAlchemyError:
+        logger.exception("读取更新后的行程失败")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="读取行程失败",
+        )
+
+    if stored_trip is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found",
+        )
+
+    blocks = sorted(
+        stored_trip.blocks,
+        key=lambda block: (block.day, block.time_slot),
+    )
+    return TripState(
+        trip_id=stored_trip.id,
         blocks=[BlockSchema.model_validate(block) for block in blocks],
     )

@@ -4,12 +4,35 @@ import { STATUS } from "./StatusBadge";
 
 const LEGEND = ["normal", "anchored", "affected", "candidate"];
 
+function findAffectedBlock(candidate, blocks) {
+  const affectedBlocks = blocks.filter((block) => block.status === "affected");
+  if (!affectedBlocks.length) return null;
+
+  return (
+    affectedBlocks.find(
+      (block) =>
+        block.day === candidate.day &&
+        block.date === candidate.date &&
+        block.time_slot === candidate.time_slot,
+    ) ??
+    affectedBlocks.find(
+      (block) => block.day === candidate.day && block.date === candidate.date,
+    ) ??
+    affectedBlocks.find((block) => block.day === candidate.day) ??
+    affectedBlocks[0]
+  );
+}
+
 export default function Timeline({
   blocks = [],
   changedIds = [],
   title = "行程安排",
   isDemo = false,
   blockCount,
+  onUpdateBlock,
+  updatingBlockId = null,
+  updatingAction = null,
+  actionsDisabled = false,
 }) {
   const days = groupByDay(blocks);
   const total = blockCount ?? blocks.length;
@@ -65,6 +88,27 @@ export default function Timeline({
                       key={block.block_id}
                       block={block}
                       isChanged={changedIds.includes(block.block_id)}
+                      isDemo={isDemo}
+                      isUpdating={updatingBlockId === block.block_id}
+                      updatingAction={updatingAction}
+                      actionsDisabled={actionsDisabled}
+                      onAction={(action) => {
+                        if (!onUpdateBlock || isDemo) return;
+                        if (action === "confirm_replace") {
+                          const affected = findAffectedBlock(block, blocks);
+                          if (!affected) return;
+                          void onUpdateBlock({
+                            action,
+                            blockId: affected.block_id,
+                            targetBlockId: block.block_id,
+                          });
+                          return;
+                        }
+                        void onUpdateBlock({
+                          action,
+                          blockId: block.block_id,
+                        });
+                      }}
                     />
                   ))}
                 </div>

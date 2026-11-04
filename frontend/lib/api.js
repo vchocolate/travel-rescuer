@@ -155,6 +155,22 @@ export const tripApi = {
       timeoutMs: 120_000,
     });
   },
+
+  updateTripBlock(input, signal) {
+    return request(
+      `/api/trip/${encodeURIComponent(input.trip_id)}/update`,
+      {
+        method: "POST",
+        body: {
+          action: input.action,
+          block_id: input.block_id,
+          target_block_id: input.target_block_id ?? null,
+        },
+        signal,
+        timeoutMs: 30_000,
+      },
+    );
+  },
 };
 
 export function checkHealth(signal) {

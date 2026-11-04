@@ -1,8 +1,38 @@
 import { isPending, splitTimeSlot } from "@/lib/timeline";
 import StatusBadge, { STATUS, StatusIcon } from "./StatusBadge";
 
-export default function TimelineBlock({ block, isChanged = false }) {
+function BlockActionButton({
+  label,
+  loadingLabel,
+  loading = false,
+  disabled = false,
+  onClick,
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled || loading}
+      aria-busy={loading}
+      onClick={onClick}
+      className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {loading ? loadingLabel : label}
+    </button>
+  );
+}
+
+export default function TimelineBlock({
+  block,
+  isChanged = false,
+  isDemo = false,
+  isUpdating = false,
+  updatingAction = null,
+  actionsDisabled = false,
+  onAction,
+}) {
   const config = STATUS[block.status] ?? STATUS.normal;
+  const showActions = !isDemo && typeof onAction === "function";
+  const actionsBusy = isUpdating || actionsDisabled;
   const { top, bottom } = splitTimeSlot(block.time_slot);
   const pending = isPending(block);
   // 契约 v0.7：date 缺失时后端返回「待定」，需要单独提示
@@ -48,13 +78,58 @@ export default function TimelineBlock({ block, isChanged = false }) {
               )}
             </div>
 
-            {pending ? (
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                待确认
-              </span>
-            ) : (
-              <StatusBadge status={block.status} />
-            )}
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              {pending ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                  待确认
+                </span>
+              ) : (
+                <StatusBadge status={block.status} />
+              )}
+
+              {showActions && (
+                <div className="flex flex-wrap justify-end gap-1">
+                  {block.status === "normal" && (
+                    <>
+                      <BlockActionButton
+                        label="🗑️ 删除"
+                        loadingLabel="删除中…"
+                        loading={isUpdating && updatingAction === "delete"}
+                        disabled={actionsBusy}
+                        onClick={() => onAction("delete")}
+                      />
+                      <BlockActionButton
+                        label="🔒 锁定"
+                        loadingLabel="锁定中…"
+                        loading={isUpdating && updatingAction === "lock"}
+                        disabled={actionsBusy}
+                        onClick={() => onAction("lock")}
+                      />
+                    </>
+                  )}
+                  {block.status === "anchored" && (
+                    <BlockActionButton
+                      label="🔓 解锁"
+                      loadingLabel="解锁中…"
+                      loading={isUpdating && updatingAction === "unlock"}
+                      disabled={actionsBusy}
+                      onClick={() => onAction("unlock")}
+                    />
+                  )}
+                  {block.status === "candidate" && (
+                    <BlockActionButton
+                      label="✅ 采用此方案"
+                      loadingLabel="采用中…"
+                      loading={
+                        isUpdating && updatingAction === "confirm_replace"
+                      }
+                      disabled={actionsBusy}
+                      onClick={() => onAction("confirm_replace")}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <p className={`mt-2 text-xs leading-5 ${pending ? "text-slate-500" : config.note}`}>

@@ -79,3 +79,12 @@ class RecomputeResponse(BaseModel):
     changed_ids: list[str]
     trip_state: TripState
     message: str | None = None
+
+
+UpdateBlockAction = Literal["delete", "lock", "unlock", "confirm_replace"]
+
+
+class UpdateBlockRequest(BaseModel):
+    action: UpdateBlockAction
+    block_id: str = Field(min_length=1)
+    target_block_id: str | None = None

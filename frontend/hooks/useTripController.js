@@ -21,6 +21,7 @@ export function useTripController({
   const [lastChangedIds, setLastChangedIds] = useState([]);
   const [error, setError] = useState(null);
   const [phase, setPhase] = useState({ status: "idle", action: null });
+  const [updatingBlock, setUpdatingBlock] = useState(null);
 
   const mountedRef = useRef(true);
   const requestRef = useRef(null);
@@ -178,6 +179,45 @@ export function useTripController({
     [api, runAction, trip],
   );
 
+  const updateBlock = useCallback(
+    async ({ action, blockId, targetBlockId = null } = {}) => {
+      if (!trip) {
+        setError("请先创建或读取行程");
+        return null;
+      }
+
+      setUpdatingBlock({
+        blockId: action === "confirm_replace" ? targetBlockId : blockId,
+        action,
+      });
+
+      try {
+        const nextTrip = await runAction(
+          "update",
+          (signal) =>
+            api.updateTripBlock(
+              {
+                trip_id: trip.trip_id,
+                action,
+                block_id: blockId,
+                target_block_id: targetBlockId,
+              },
+              signal,
+            ),
+          { mutation: true },
+        );
+        if (!nextTrip || !mountedRef.current) return null;
+
+        setTrip(nextTrip);
+        setLastChangedIds([]);
+        return nextTrip;
+      } finally {
+        if (mountedRef.current) setUpdatingBlock(null);
+      }
+    },
+    [api, runAction, trip],
+  );
+
   const search = useCallback(
     async (query) => {
       if (!trip) {
@@ -203,6 +243,7 @@ export function useTripController({
     setLastChangedIds([]);
     setError(null);
     setPhase({ status: "idle", action: null });
+    setUpdatingBlock(null);
     clearTripId();
   }, []);
 
@@ -217,6 +258,8 @@ export function useTripController({
     phase,
     isBusy,
     busyAction: isBusy ? phase.action : null,
+    updatingBlockId: updatingBlock?.blockId ?? null,
+    updatingAction: updatingBlock?.action ?? null,
     shareUrl,
     clearError: () => setError(null),
     resetTrip,
@@ -224,6 +267,7 @@ export function useTripController({
     initializeTrip,
     parseOrder,
     recompute,
+    updateBlock,
     search,
   };
 }

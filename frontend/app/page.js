@@ -67,8 +67,10 @@ export default function Home() {
       ? "正在规划"
       : controller.busyAction === "parse-order"
         ? "正在解析订单"
-        : controller.busyAction === "recompute"
-          ? "正在重算"
+        : controller.busyAction === "update"
+          ? "正在更新行程"
+          : controller.busyAction === "recompute"
+            ? "正在重算"
           : controller.busyAction === "search"
             ? "正在检索"
             : controller.busyAction === "load"
@@ -326,6 +328,10 @@ export default function Home() {
           title={tripTitle}
           isDemo={isDemo}
           blockCount={displayBlocks.length}
+          onUpdateBlock={controller.updateBlock}
+          updatingBlockId={controller.updatingBlockId}
+          updatingAction={controller.updatingAction}
+          actionsDisabled={controller.isBusy}
         />
       </main>
     </div>
