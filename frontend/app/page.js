@@ -11,12 +11,13 @@ const INITIAL_MESSAGES = [
   {
     id: "welcome",
     role: "ai",
-    text: "把旅行需求写在下面即可开始。生成行程后，可以粘贴订单文字生成锚点，也可以测试下雨重算和替代方案。",
+    text: "请告诉我您的旅行需求。生成行程后，您可以粘贴订单生成锚点，或者随时告诉我【天气突变/计划有变】，我会为您进行局部重算并给出替代方案。",
   },
 ];
 
 const ORDER_RE = /(酒店|入住|离店|订单|车票|门票|航班|确认)/;
-const DISRUPTION_RE = /(雨|下雨|天气|台风|变化|影响|调整|改)/;
+const DISRUPTION_RE =
+  /(雨|雪|变|降温|升温|天气|台风|取消|改期|改签|延误|晚点|停运|停飞|关闭|影响|调整|改)/;
 
 function extractDestination(blocks) {
   const counts = new Map();
