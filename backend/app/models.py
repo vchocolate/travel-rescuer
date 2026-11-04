@@ -54,6 +54,9 @@ class Block(Base):
         index=True,
     )
     day: Mapped[int] = mapped_column(Integer, nullable=False)
+    date: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=""
+    )
     time_slot: Mapped[str] = mapped_column(String(64), nullable=False)
     activity: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str] = mapped_column(
