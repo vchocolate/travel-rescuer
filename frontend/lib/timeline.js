@@ -26,11 +26,15 @@ export function startMinutes(timeSlot = "") {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+// 契约 v0.7：日期缺失时后端统一返回「待定」，前端按无日期处理。
+const PENDING = "待定";
+
 // ISO 日期转「11月5日」；手动解析避免 new Date 的时区偏移。
 export function formatDayDate(date) {
-  if (!date) return "";
-  const match = String(date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return String(date);
+  const text = String(date ?? "").trim();
+  if (!text || text === PENDING) return "";
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return text;
   return `${Number(match[2])}月${Number(match[3])}日`;
 }
 
@@ -52,7 +56,9 @@ export function groupByDay(blocks = []) {
   return days;
 }
 
-/** parse_order 失败或时间/地点为空时，不能当锚点，显示「待确认」。 */
+/** parse_order 失败或时间/地点为空（或后端返回「待定」）时，不能当锚点，显示「待确认」。 */
 export function isPending(block) {
-  return !block.time_slot?.trim() || !block.location?.trim();
+  const time = block.time_slot?.trim() ?? "";
+  const place = block.location?.trim() ?? "";
+  return !time || !place || time === PENDING || place === PENDING;
 }
