@@ -50,76 +50,46 @@ const initialChatMessages = [
   },
 ];
 
-const timeline = [
+const fallbackBlocks = [
   {
-    day: "DAY 1",
-    date: "11月5日",
-    subtitle: "抵达 · 沙面",
-    blocks: [
-      {
-        time: "11:30",
-        title: "广州某酒店 · 入住",
-        location: "荔湾区 · 已确认订单",
-        status: "anchored",
-        note: "已锁定 · 订单确认后不参与重算",
-      },
-      {
-        time: "14:00",
-        title: "沙面岛户外游览",
-        location: "沙面岛",
-        status: "affected",
-        note: "降雨影响 14:00–16:00 · 等待替换确认",
-      },
-      {
-        time: "14:00",
-        title: "永庆坊室内展馆",
-        location: "恩宁路",
-        status: "candidate",
-        note: "替代方案 · 建议替换受影响的户外块",
-      },
-      {
-        time: "18:30",
-        title: "西关晚餐",
-        location: "上下九步行街",
-        status: "normal",
-        note: "已预留 1.5 小时 · 可自由调整",
-      },
-    ],
+    block_id: "demo-b1",
+    day: 1,
+    date: "2026-11-05",
+    time_slot: "11:30-12:00",
+    activity: "广州某酒店 · 入住",
+    location: "广州荔湾区",
+    is_anchor: true,
+    status: "anchored",
   },
   {
-    day: "DAY 2",
-    date: "11月6日",
-    subtitle: "老城 · 文化",
-    blocks: [
-      {
-        time: "09:30",
-        title: "陈家祠",
-        location: "中山七路",
-        status: "normal",
-        note: "建议游览 1.5 小时",
-      },
-      {
-        time: "12:00",
-        title: "老字号午餐",
-        location: "荔湾区",
-        status: "normal",
-        note: "已预留 1 小时",
-      },
-      {
-        time: "14:30",
-        title: "北京路步行街",
-        location: "越秀区",
-        status: "normal",
-        note: "自由活动 · 可随时调整",
-      },
-      {
-        time: "18:00",
-        title: "返程",
-        location: "广州南站",
-        status: "normal",
-        note: "建议提前 1 小时出发",
-      },
-    ],
+    block_id: "demo-b2",
+    day: 1,
+    date: "2026-11-05",
+    time_slot: "14:00-16:00",
+    activity: "沙面岛户外游览",
+    location: "广州荔湾区",
+    is_anchor: false,
+    status: "affected",
+  },
+  {
+    block_id: "demo-b3",
+    day: 1,
+    date: "2026-11-05",
+    time_slot: "14:00-16:00",
+    activity: "永庆坊室内展馆",
+    location: "广州荔湾区恩宁路",
+    is_anchor: false,
+    status: "candidate",
+  },
+  {
+    block_id: "demo-b4",
+    day: 2,
+    date: "2026-11-06",
+    time_slot: "09:30-11:00",
+    activity: "陈家祠",
+    location: "广州荔湾区中山七路",
+    is_anchor: false,
+    status: "normal",
   },
 ];
 
@@ -390,13 +360,14 @@ export default function Home() {
   }, [messages, controller.error]);
 
   const timelineDays = useMemo(
-    () => (controller.trip ? toTimelineDays(controller.trip.blocks) : timeline),
+    () =>
+      toTimelineDays(controller.trip?.blocks || fallbackBlocks),
     [controller.trip],
   );
-  const blockCount = controller.trip?.blocks.length ?? 8;
+  const blockCount = controller.trip?.blocks.length ?? fallbackBlocks.length;
   const dayCount = controller.trip
     ? new Set(controller.trip.blocks.map((block) => block.day)).size
-    : 2;
+    : new Set(fallbackBlocks.map((block) => block.day)).size;
   const busyLabel =
     controller.busyAction === "initialize"
       ? "正在规划"
@@ -426,50 +397,55 @@ export default function Home() {
           { role: "user", text },
           {
             role: "ai",
-            text: `已生成第一天 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续填写订单，或点击“下午下雨了”查看局部重算。`,
+            text: `已生成共 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续填写变化，或使用下方按钮处理订单与搜索。`,
           },
         ]);
       }
       return;
     }
 
-    if (/(酒店|入住|车票|订单|确认)/.test(text)) {
-      const result = await controller.parseOrder({ orderText: text });
-      const block = result?.new_block;
-      if (result) {
-        setMessages((current) => [
-          ...current,
-          {
-            role: "ai",
-            text:
-              result.success && block
-                ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
-                : "订单缺少日期、时间或地点，已加入行程并标记为待确认，不会误锁为锚点。",
-          },
-        ]);
-      }
-      return;
+    const result = await controller.recompute(text);
+    if (result) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "ai",
+          text:
+            result.message ||
+            (result.changed_ids.length
+              ? "已经保留锚点并更新受影响的活动。变化项已在右侧突出显示。"
+              : "已重新计算，但本次没有需要替换的行程项。"),
+        },
+      ]);
     }
+  }
 
-    if (/(雨|天气|台风|变化|影响)/.test(text)) {
-      const result = await controller.recompute(text);
-      if (result) {
-        setMessages((current) => [
-          ...current,
-          {
-            role: "ai",
-            text:
-              result.message ||
-              (result.changed_ids.length
-                ? "已经保留酒店锚点，并更新受影响的户外活动和替代方案。变化项已在右侧突出显示。"
-                : "已重新计算，但本次没有需要替换的行程项。"),
-          },
-        ]);
-      }
-      return;
+  async function submitOrderText(orderText) {
+    if (!orderText.trim() || controller.isBusy || !controller.trip) return;
+    setMessages((current) => [
+      ...current,
+      { role: "user", text: orderText },
+    ]);
+    const result = await controller.parseOrder({ orderText });
+    const block = result?.new_block;
+    if (result) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "ai",
+          text:
+            result.success && block
+              ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
+              : "订单缺少日期、时间或地点，已加入行程并标记为待确认，不会误锁为锚点。",
+        },
+      ]);
     }
+  }
 
-    const results = await controller.search(text);
+  async function submitSearch(query) {
+    if (!query.trim() || controller.isBusy || !controller.trip) return;
+    setMessages((current) => [...current, { role: "user", text: query }]);
+    const results = await controller.search(query);
     if (results?.length) {
       setMessages((current) => [
         ...current,
@@ -680,7 +656,7 @@ export default function Home() {
                 type="button"
                 disabled={!controller.trip || controller.isBusy}
                 onClick={() =>
-                  void submitMessage(
+                  void submitOrderText(
                     "酒店已确认：11月5日15:00后入住广州某酒店，离店11月6日，地址广州荔湾区。",
                   )
                 }
@@ -718,7 +694,7 @@ export default function Home() {
               <button
                 type="button"
                 disabled={!controller.trip || controller.isBusy}
-                onClick={() => void submitMessage("沙面附近有哪些室内场馆推荐？")}
+                onClick={() => void submitSearch("沙面附近有哪些室内场馆推荐？")}
                 className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 查看替代方案
@@ -738,7 +714,7 @@ export default function Home() {
                 disabled={controller.isBusy}
                 placeholder={
                   controller.trip
-                    ? "输入变化、订单或攻略问题…"
+                    ? "输入天气、交通或其他行程变化…"
                     : "先描述你的旅行需求…"
                 }
                 className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"

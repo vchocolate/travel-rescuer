@@ -17,10 +17,11 @@ npm run dev
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_USE_MOCK=true
+NEXT_PUBLIC_USE_MOCK=false
 ```
 
-后端仍返回 501 时保持 `NEXT_PUBLIC_USE_MOCK=true`。真实接口可用后改为 `false`。
+默认连接真实后端。只有后端不可用、需要离线演示时才临时设置
+`NEXT_PUBLIC_USE_MOCK=true`。
 
 ## B 已接入
 

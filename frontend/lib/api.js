@@ -5,7 +5,7 @@ const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"
 ).replace(/\/+$/, "");
 
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 function errorFromPayload(payload, status) {
@@ -122,6 +122,7 @@ export const tripApi = {
     return request(`/api/trip/${encodeURIComponent(tripId)}`, {
       method: "GET",
       signal,
+      timeoutMs: 60_000,
     });
   },
 
