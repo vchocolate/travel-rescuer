@@ -84,6 +84,7 @@ class ScheduleResponse(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
+    trip_id: UUID | None = None
 
 
 class SearchResponse(BaseModel):

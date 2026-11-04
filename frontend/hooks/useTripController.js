@@ -264,7 +264,10 @@ export function useTripController({
         return null;
       }
       const results = await runAction("search", (signal) =>
-        api.searchEvidence({ query }, signal),
+        api.searchEvidence(
+          { query, trip_id: trip.trip_id },
+          signal,
+        ),
       );
       if (!results || !mountedRef.current) return null;
       setEvidence(results);

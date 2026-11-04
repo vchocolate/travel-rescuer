@@ -206,9 +206,12 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 
 ```json
 {
-  "query": "沙面有什么避坑建议"
+  "query": "沙面有什么避坑建议",
+  "trip_id": "123e4567-e89b-12d3-a456-426614174000"
 }
 ```
+
+`query` 必填，`trip_id` 可选；不传时保持纯 query 搜索，行为与旧版本一致。
 
 响应 `200`：`SearchResponse[]`。
 
@@ -226,7 +229,11 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 当前已接入博查：
 
 - 先调用一次 LLM 做 Query Rewrite；保留原始 query 作为兜底，不丢弃原始实体。
-- 用改写后的 query 和原始 query 分别请求博查（并发），按 URL 去重。
+- 传入 `trip_id` 时，后端读取 Trip blocks，计算 active day、日期、当前城市和活动，作为紧凑 `trip_context` 注入同一次 Query Rewrite（不额外增加 LLM 调用）。
+- 上下文只补充用户未明确说出的城市/时间；用户显式提到的城市、地点、日期绝对不被覆盖。多城市行程优先使用 active day 的城市。
+- 上下文缺失、行程不存在或 DB 读取失败时，自动降级为纯 query 搜索。
+- 若上下文城市唯一且 query 是“晚上去哪/附近有什么”等通用问法，后端增加 `city + query` 的确定性 fallback；博查仍最多两路（改写 query + fallback/original），不增加调用次数。
+- 用改写后的 query 和 fallback query（无上下文时为原始 query）分别请求博查（并发），按 URL 去重。
 - 请求体 `{"query": ..., "summary": true, "count": 3}`，从 `data.webPages.value` 提取 `name`、`url`、`snippet`（或 `summary`），封装成 `SearchEvidence`。
 - 将合并后的 evidence 与**原始问题**一起交给总结模型，严格按原始意图提炼，并用 `SearchResultBundle` 做 `model_validate_json()` 校验。
 - Query Rewrite 超时 30 秒，博查超时 15 秒，总结超时 90 秒；前端超时 180 秒。
@@ -348,7 +355,7 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 - 新增 `NEXT_PUBLIC_API_BASE_URL`，默认 `http://127.0.0.1:8000`。
 - 后端全部接口可用：`init_trip`、`parse_order`（文本/图片）、`search`、`get_trip`、`recompute`。前端演示只使用文本订单，图片上传入口已移除。
 - `get_trip` 找不到时统一返回 `404 "Trip not found"`，不要重试；数据库不可用为 `503`。
-- `search` 可能返回空数组（博查或 LLM 失败）；显示“暂无证据”，不要自动重试风暴；最长约 105 秒。
+- `search` 可能返回空数组（博查或 LLM 失败）；显示“暂无证据”，不要自动重试风暴；最长约 105 秒。请求可带可选 `trip_id` 让后端补齐当前城市上下文；不传时行为不变。
 - `recompute` 可能耗时 10–120 秒；`400` 表示模型结果/锚点保护失败，`503` 表示服务不可用。`changed_ids` 中是旧受影响块 ID + 新候选块 ID；锚点不会出现。`message` 可为空字符串或提示文案。
 - **破坏性变更**：`init_trip` 请求字段由 `message` 改为 `query`。
 - **破坏性变更**：`parse_order` 响应由扁平 Block + `missing_fields` 改为 `{success, new_block}`。
