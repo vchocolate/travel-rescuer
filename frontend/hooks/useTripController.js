@@ -96,11 +96,11 @@ export function useTripController({
   }, [autoLoad, initialTripId, loadTrip]);
 
   const initializeTrip = useCallback(
-    async (message) => {
+    async (query) => {
       const nextTrip = await runAction(
         "initialize",
         (signal) =>
-          api.initTrip({ message, trip_id: trip?.trip_id || null }, signal),
+          api.initTrip({ query, trip_id: trip?.trip_id || null }, signal),
         { mutation: true },
       );
       if (!nextTrip || !mountedRef.current) return null;
@@ -114,21 +114,30 @@ export function useTripController({
   );
 
   const parseOrder = useCallback(
-    async (orderText) => {
+    async ({ orderText, imageBase64, imageMimeType } = {}) => {
       if (!trip) {
         setError("请先创建或读取行程");
         return null;
       }
-      const block = await runAction(
+      const result = await runAction(
         "parse-order",
         (signal) =>
           api.parseOrder(
-            { trip_id: trip.trip_id, order_text: orderText },
+            {
+              trip_id: trip.trip_id,
+              ...(orderText
+                ? { order_text: orderText }
+                : {
+                    image_base64: imageBase64,
+                    image_mime_type: imageMimeType,
+                  }),
+            },
             signal,
           ),
         { mutation: true },
       );
-      if (!block || !mountedRef.current) return null;
+      const block = result?.new_block;
+      if (!block || !mountedRef.current) return result;
 
       setTrip((current) => {
         if (!current) return current;
@@ -144,7 +153,7 @@ export function useTripController({
             ),
         };
       });
-      return block;
+      return result;
     },
     [api, runAction, trip],
   );
@@ -159,16 +168,15 @@ export function useTripController({
         "recompute",
         (signal) =>
           api.recomputeTrip(
-            { trip_id: trip.trip_id, change },
+            { trip_id: trip.trip_id, change_desc: change },
             signal,
           ),
         { mutation: true },
       );
-      if (!response || !mountedRef.current) return null;
-      const { changed_ids: changedIds, ...nextTrip } = response;
-      setTrip(nextTrip);
+      if (!response?.trip_state || !mountedRef.current) return null;
+      setTrip(response.trip_state);
       setEvidence([]);
-      setLastChangedIds(changedIds);
+      setLastChangedIds(response.changed_ids || []);
       return response;
     },
     [api, runAction, trip],
@@ -181,7 +189,7 @@ export function useTripController({
         return null;
       }
       const results = await runAction("search", (signal) =>
-        api.searchEvidence({ trip_id: trip.trip_id, query }, signal),
+        api.searchEvidence({ query }, signal),
       );
       if (!results || !mountedRef.current) return null;
       setEvidence(results);

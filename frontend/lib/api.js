@@ -114,6 +114,7 @@ export const tripApi = {
       method: "POST",
       body: input,
       signal,
+      timeoutMs: 120_000,
     });
   },
 
@@ -129,6 +130,7 @@ export const tripApi = {
       method: "POST",
       body: input,
       signal,
+      timeoutMs: 120_000,
     });
   },
 
@@ -137,14 +139,19 @@ export const tripApi = {
       method: "POST",
       body: input,
       signal,
+      timeoutMs: 90_000,
     });
   },
 
   recomputeTrip(input, signal) {
     return request("/api/recompute", {
       method: "POST",
-      body: input,
+      body: {
+        trip_id: input.trip_id,
+        change_desc: input.change_desc,
+      },
       signal,
+      timeoutMs: 120_000,
     });
   },
 };

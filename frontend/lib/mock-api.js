@@ -70,6 +70,7 @@ function contractBlocks() {
     {
       block_id: "b1",
       day: 1,
+      date: "2026-11-07",
       time_slot: "11:30-12:00",
       activity: "广州某酒店 · 入住",
       location: "广州荔湾区",
@@ -79,6 +80,7 @@ function contractBlocks() {
     {
       block_id: "b2",
       day: 1,
+      date: "2026-11-07",
       time_slot: "14:00-16:00",
       activity: "沙面岛户外游览",
       location: "广州荔湾区",
@@ -88,6 +90,7 @@ function contractBlocks() {
     {
       block_id: "b4",
       day: 1,
+      date: "2026-11-07",
       time_slot: "18:30-20:00",
       activity: "西关晚餐",
       location: "广州荔湾区上下九",
@@ -110,25 +113,44 @@ function createTrip(input) {
 
 function parseOrder(input) {
   const trip = requireTrip(input.trip_id);
-  const hasDate = /\d{1,2}月\d{1,2}日/.test(input.order_text);
-  const hasLocation = /(地址|位于|路|街|区)/.test(input.order_text);
+  const orderText = input.order_text || "";
+  const isImage = Boolean(input.image_base64);
+  const hasActivity = isImage || /(酒店|车票|门票|入住|订单)/.test(orderText);
+  const hasDate = isImage || /\d{1,2}月\d{1,2}日/.test(orderText);
+  const hasTime = isImage || /\d{1,2}[:：]\d{2}/.test(orderText);
+  const hasLocation = isImage || /(地址|位于|路|街|区)/.test(orderText);
 
-  if (!input.order_text.trim() || !hasDate || !hasLocation) {
-    throw new ApiError("订单缺少日期或地点，请补充后再确认", {
+  if (!isImage && !hasActivity) {
+    throw new ApiError("订单中未识别出活动名称，请补充后再确认", {
       kind: "http",
       status: 422,
-      code: "ORDER_FIELD_MISSING",
+      code: "ORDER_ACTIVITY_MISSING",
     });
   }
 
+  const dateMatch = orderText.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
+  const parsedDate = dateMatch
+    ? `${dateMatch[1] || "2026"}-${String(dateMatch[2]).padStart(2, "0")}-${String(dateMatch[3]).padStart(2, "0")}`
+    : "待定";
+  const timeMatch = orderText.match(/\d{1,2}[:：]\d{2}/);
+  const parsedTime = timeMatch ? timeMatch[0].replace("：", ":") : "";
+  const success = hasDate && hasTime && hasLocation;
   const block = {
-    block_id: "b1",
+    block_id: success ? "b1" : `pending-${Date.now()}`,
     day: 1,
-    time_slot: "15:00-16:00",
-    activity: /酒店/.test(input.order_text) ? "入住广州某酒店" : "已确认订单",
-    location: /荔湾/.test(input.order_text) ? "广州荔湾区" : "广州",
-    is_anchor: true,
-    status: "anchored",
+    date: isImage ? "2026-11-07" : parsedDate,
+    time_slot: isImage ? "15:00" : parsedTime,
+    activity:
+      isImage || /酒店/.test(orderText)
+        ? "广州荔湾某酒店 · 入住"
+        : "已确认订单",
+    location: hasLocation
+      ? /荔湾/.test(orderText)
+        ? "广州市荔湾区恩宁路123号"
+        : "广州"
+      : "",
+    is_anchor: success,
+    status: success ? "anchored" : "normal",
   };
 
   trip.blocks = trip.blocks
@@ -141,7 +163,10 @@ function parseOrder(input) {
     );
   persistTrip(trip);
 
-  return clone(block);
+  return {
+    success,
+    new_block: clone(block),
+  };
 }
 
 function recompute(input) {
@@ -157,6 +182,7 @@ function recompute(input) {
       ...(outdoor || {
         block_id: "b2",
         day: 1,
+        date: "2026-11-07",
         time_slot: "14:00-16:00",
         activity: "沙面岛户外游览",
         location: "广州荔湾区",
@@ -168,6 +194,7 @@ function recompute(input) {
     {
       block_id: "b3",
       day: 1,
+      date: outdoor?.date || "2026-11-07",
       time_slot: "14:00-16:00",
       activity: "永庆坊室内展馆 · 雨天替代",
       location: "广州荔湾区恩宁路",
@@ -183,19 +210,19 @@ function recompute(input) {
   persistTrip(trip);
 
   return {
-    ...clone(trip),
     changed_ids: changedIds,
+    trip_state: clone(trip),
+    message: "已完成局部重算",
   };
 }
 
 function search(input) {
-  requireTrip(input.trip_id);
   return [
     {
       title: "沙面岛游览攻略",
       url: "https://example.com/shamian",
-      summary: `与“${input.query}”相关的示例证据：沙面岛适合傍晚散步，雨天可转入室内展馆。`,
-      retrieved_at: "2026-11-04T07:00:00Z",
+      highlights: [`与“${input.query}”相关`, "适合傍晚散步", "骑楼建筑集中"],
+      pitfalls: ["周末人多", "部分展馆周一闭馆"],
     },
   ];
 }

@@ -140,10 +140,17 @@ function toTimelineDays(blocks) {
       id: block.block_id,
       time: block.time_slot.split("-")[0] || block.time_slot,
       timeSlot: block.time_slot,
+      date: block.date || "待定",
       title: block.activity,
       location: block.location,
       status: block.status,
-      note: STATUS_NOTES[block.status] || "",
+      note:
+        !block.date ||
+        block.date === "待定" ||
+        !block.time_slot ||
+        !block.location
+          ? "待确认 · 订单日期、时间或地点不完整"
+          : STATUS_NOTES[block.status] || "",
       isAnchor: block.is_anchor,
     });
     groups.set(block.day, dayBlocks);
@@ -151,7 +158,10 @@ function toTimelineDays(blocks) {
 
   return Array.from(groups.entries()).map(([day, dayBlocks]) => ({
     day: `DAY ${day}`,
-    date: `第 ${day} 天`,
+    date:
+      dayBlocks[0]?.date && dayBlocks[0].date !== "待定"
+        ? dayBlocks[0].date
+        : `第 ${day} 天 · 日期待定`,
     subtitle: "实时行程",
     blocks: dayBlocks,
   }));
@@ -250,9 +260,24 @@ function EvidenceCard({ evidence }) {
       <p className="mt-1.5 text-sm font-semibold text-slate-800">
         {evidence.title}
       </p>
-      <p className="mt-1 text-xs leading-5 text-slate-600">
-        {evidence.summary}
-      </p>
+      <div className="mt-2 grid gap-2 text-xs leading-5">
+        <div>
+          <p className="font-semibold text-slate-700">亮点</p>
+          <ul className="list-disc pl-4 text-slate-600">
+            {(evidence.highlights || []).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="font-semibold text-slate-700">避坑</p>
+          <ul className="list-disc pl-4 text-slate-600">
+            {(evidence.pitfalls || []).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
       <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px]">
         <span className="truncate text-slate-500">
           来源：{sourceName(evidence.url)}
@@ -355,6 +380,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [copied, setCopied] = useState(false);
   const chatScrollRef = useRef(null);
+  const orderFileRef = useRef(null);
 
   useEffect(() => {
     chatScrollRef.current?.scrollTo({
@@ -408,13 +434,17 @@ export default function Home() {
     }
 
     if (/(酒店|入住|车票|订单|确认)/.test(text)) {
-      const block = await controller.parseOrder(text);
-      if (block) {
+      const result = await controller.parseOrder({ orderText: text });
+      const block = result?.new_block;
+      if (result) {
         setMessages((current) => [
           ...current,
           {
             role: "ai",
-            text: `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`,
+            text:
+              result.success && block
+                ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
+                : "订单缺少日期、时间或地点，已加入行程并标记为待确认，不会误锁为锚点。",
           },
         ]);
       }
@@ -428,9 +458,11 @@ export default function Home() {
           ...current,
           {
             role: "ai",
-            text: result.changed_ids.length
-              ? "已经保留酒店锚点，并更新受影响的户外活动和替代方案。变化项已在右侧突出显示。"
-              : "已重新计算，但本次没有需要替换的行程项。",
+            text:
+              result.message ||
+              (result.changed_ids.length
+                ? "已经保留酒店锚点，并更新受影响的户外活动和替代方案。变化项已在右侧突出显示。"
+                : "已重新计算，但本次没有需要替换的行程项。"),
           },
         ]);
       }
@@ -453,6 +485,54 @@ export default function Home() {
         {
           role: "ai",
           text: "暂时没有找到可用证据，本次不会虚构攻略内容。",
+        },
+      ]);
+    }
+  }
+
+  async function uploadOrderImage(file) {
+    if (!file || controller.isBusy) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setMessages((current) => [
+        ...current,
+        { role: "ai", text: "订单图片超过 5MB，请压缩或换成更小的截图。" },
+      ]);
+      return;
+    }
+
+    setMessages((current) => [
+      ...current,
+      { role: "user", text: `上传订单截图：${file.name}` },
+    ]);
+
+    let dataUrl;
+    try {
+      dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("图片读取失败"));
+        reader.readAsDataURL(file);
+      });
+    } catch {
+      setMessages((current) => [
+        ...current,
+        { role: "ai", text: "图片读取失败，请重新选择订单截图。" },
+      ]);
+      return;
+    }
+    const imageBase64 = dataUrl.split(",")[1] || "";
+    const result = await controller.parseOrder({
+      imageBase64,
+      imageMimeType: file.type,
+    });
+    if (result) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "ai",
+          text: result.success
+            ? `已从截图中识别「${result.new_block.activity}」并锁定为锚点。`
+            : "已读取截图，但时间或地点不完整，请在行程中确认后再使用。",
         },
       ]);
     }
@@ -601,13 +681,32 @@ export default function Home() {
                 disabled={!controller.trip || controller.isBusy}
                 onClick={() =>
                   void submitMessage(
-                    "酒店已确认：11月5日入住广州某酒店，离店11月6日，地址广州荔湾区。",
+                    "酒店已确认：11月5日15:00后入住广州某酒店，离店11月6日，地址广州荔湾区。",
                   )
                 }
                 className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 测试订单锚点
               </button>
+              <button
+                type="button"
+                disabled={!controller.trip || controller.isBusy}
+                onClick={() => orderFileRef.current?.click()}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                上传订单截图
+              </button>
+              <input
+                ref={orderFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void uploadOrderImage(file);
+                }}
+              />
               <button
                 type="button"
                 disabled={!controller.trip || controller.isBusy}

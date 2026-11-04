@@ -34,6 +34,10 @@ NEXT_PUBLIC_USE_MOCK=true
 请求层位于 `lib/api.js`，Mock 位于 `lib/mock-api.js`，交互状态位于
 `hooks/useTripController.js`。
 
+接口版本为 v0.7：创建请求使用 `query`；行程块支持 `date` 和 `待定`；订单响应使用
+`{ success, new_block }`；重算请求使用 `change_desc`，响应使用
+`{ changed_ids, trip_state }`；搜索结果使用 `highlights` 和 `pitfalls`。
+
 ## 检查
 
 ```bash
