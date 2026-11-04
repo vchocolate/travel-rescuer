@@ -115,7 +115,7 @@ export function useTripController({
   );
 
   const parseOrder = useCallback(
-    async ({ orderText, imageBase64, imageMimeType } = {}) => {
+    async ({ orderText } = {}) => {
       if (!trip) {
         setError("请先创建或读取行程");
         return null;
@@ -126,12 +126,7 @@ export function useTripController({
           api.parseOrder(
             {
               trip_id: trip.trip_id,
-              ...(orderText
-                ? { order_text: orderText }
-                : {
-                    image_base64: imageBase64,
-                    image_mime_type: imageMimeType,
-                  }),
+              order_text: orderText,
             },
             signal,
           ),
@@ -157,29 +152,6 @@ export function useTripController({
       return result;
     },
     [api, runAction, trip],
-  );
-
-  const parseOrderImage = useCallback(
-    async (dataUrl) => {
-      if (!trip) {
-        setError("请先创建或读取行程");
-        return null;
-      }
-
-      const match = String(dataUrl || "").match(
-        /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/,
-      );
-      if (!match) {
-        setError("图片格式无效，请重新选择图片");
-        return null;
-      }
-
-      return parseOrder({
-        imageBase64: match[2],
-        imageMimeType: match[1],
-      });
-    },
-    [parseOrder, trip],
   );
 
   const recompute = useCallback(
@@ -251,7 +223,6 @@ export function useTripController({
     loadTrip,
     initializeTrip,
     parseOrder,
-    parseOrderImage,
     recompute,
     search,
   };

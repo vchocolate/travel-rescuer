@@ -11,19 +11,12 @@ const INITIAL_MESSAGES = [
   {
     id: "welcome",
     role: "ai",
-    text: "把旅行需求写在下面即可开始。生成行程后，可以继续测试订单、下雨重算和替代方案。",
+    text: "把旅行需求写在下面即可开始。生成行程后，可以粘贴订单文字生成锚点，也可以测试下雨重算和替代方案。",
   },
 ];
 
 const ORDER_RE = /(酒店|入住|离店|订单|车票|门票|航班|确认)/;
 const DISRUPTION_RE = /(雨|下雨|天气|台风|变化|影响|调整|改)/;
-const SUPPORTED_IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-const IMAGE_UPLOAD_ENABLED =
-  process.env.NEXT_PUBLIC_ENABLE_IMAGE_UPLOAD !== "false";
 
 function extractDestination(blocks) {
   const counts = new Map();
@@ -90,13 +83,13 @@ export default function Home() {
         : "未开始";
 
   const footerText = controller.trip
-    ? "行程已保存 · 刷新或分享后仍可恢复"
+    ? "行程已保存 · 订单请粘贴文字"
     : isDemo
       ? "演示样例 · 首次发送会创建真实行程"
       : "输入需求开始规划";
 
   const placeholder = controller.trip
-    ? "输入变化、订单或攻略问题…"
+    ? "输入变化、粘贴订单文字或攻略问题…"
     : isDemo
       ? "先描述你的旅行需求…"
       : "描述目的地和日期，开始新行程…";
@@ -190,66 +183,6 @@ export default function Home() {
     }
 
     await submitSearch(text);
-  }
-
-  async function uploadOrderImage(file) {
-    if (!file || controller.isBusy) return;
-
-    if (!controller.trip) {
-      appendMessage({
-        role: "ai",
-        text: "请先创建或打开一份行程，再上传订单截图。",
-      });
-      return;
-    }
-
-    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-      appendMessage({
-        role: "ai",
-        text: "图片识别仅支持 JPG、PNG、WebP，请换图或直接粘贴订单文字。",
-      });
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      appendMessage({
-        role: "ai",
-        text: "订单图片超过 5MB，请压缩或换成更小的截图。",
-      });
-      return;
-    }
-
-    let dataUrl;
-    try {
-      dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("图片读取失败"));
-        reader.readAsDataURL(file);
-      });
-    } catch {
-      appendMessage({
-        role: "ai",
-        text: "图片读取失败，请重新选择订单截图。",
-      });
-      return;
-    }
-
-    appendMessage({
-      role: "user",
-      text: `上传订单截图：${file.name}`,
-      image: dataUrl,
-    });
-
-    const result = await controller.parseOrderImage(dataUrl);
-    if (!result) return;
-
-    appendMessage({
-      role: "ai",
-      text: result.success
-        ? `已从截图中识别「${result.new_block.activity}」并锁定为锚点。`
-        : "已读取截图，但日期、时间或地点不完整，请在行程中确认后再使用。",
-    });
   }
 
   async function copyShareLink() {
@@ -405,8 +338,6 @@ export default function Home() {
           value={input}
           onChange={setInput}
           onSubmit={submitMessage}
-          onUpload={uploadOrderImage}
-          enableImageUpload={IMAGE_UPLOAD_ENABLED}
           quickActions={quickActions}
           isLoading={controller.isBusy}
           error={controller.error || ""}

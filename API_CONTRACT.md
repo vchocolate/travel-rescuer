@@ -162,7 +162,7 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 }
 ```
 
-图片请求（base64，单张不超过 5MB，也接受 `data:image/png;base64,...`）：
+图片请求（后端能力，base64，单张不超过 5MB，也接受 `data:image/png;base64,...`；前端演示已移除上传入口，不调用此模式）：
 
 ```json
 {
@@ -346,13 +346,13 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 ## 7. 给队友 B（联调）的规则
 
 - 新增 `NEXT_PUBLIC_API_BASE_URL`，默认 `http://127.0.0.1:8000`。
-- 当前全部接口可用：`init_trip`、`parse_order`（文本/图片）、`search`、`get_trip`、`recompute`。
+- 后端全部接口可用：`init_trip`、`parse_order`（文本/图片）、`search`、`get_trip`、`recompute`。前端演示只使用文本订单，图片上传入口已移除。
 - `get_trip` 找不到时统一返回 `404 "Trip not found"`，不要重试；数据库不可用为 `503`。
 - `search` 可能返回空数组（博查或 LLM 失败）；显示“暂无证据”，不要自动重试风暴；最长约 105 秒。
 - `recompute` 可能耗时 10–120 秒；`400` 表示模型结果/锚点保护失败，`503` 表示服务不可用。`changed_ids` 中是旧受影响块 ID + 新候选块 ID；锚点不会出现。`message` 可为空字符串或提示文案。
 - **破坏性变更**：`init_trip` 请求字段由 `message` 改为 `query`。
 - **破坏性变更**：`parse_order` 响应由扁平 Block + `missing_fields` 改为 `{success, new_block}`。
-- 图片使用 `FileReader` 转 base64，单张不超过 5MB；`501` 时提示视觉模型未配置，不要自动重试。
+- 前端不启用图片上传，订单识别只传 `order_text`；后端保留 `image_base64` 能力（单张不超过 5MB），供内部或后续使用。
 - `BlockSchema.date` 默认 `待定`；后端会把数据库 `null` / 空字符串统一转成 `待定`，前端直接展示即可。新 AI 数据仍必须是 `YYYY-MM-DD`。
 - `init_trip` 可能耗时 10–120 秒，`parse_order` 文本约 10–60 秒、图片最多约 210 秒，需要 loading 和超时处理。
 - 所有已实现接口的 LLM 输出都经过 Pydantic 严格校验；失败不会写数据库，前端按 `400/422/502/503` 显示可理解错误。

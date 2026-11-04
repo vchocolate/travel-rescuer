@@ -9,13 +9,6 @@ function ChatMessage({ message }) {
       <div className="flex justify-end">
         <div className="max-w-[82%] rounded-2xl rounded-tr-md bg-slate-900 px-3.5 py-2.5 text-sm leading-6 text-white shadow-sm">
           <p>{message.text}</p>
-          {message.image && (
-            <img
-              src={message.image}
-              alt="订单截图预览"
-              className="mt-2 max-h-48 w-full rounded-lg border border-white/20 bg-white object-contain"
-            />
-          )}
         </div>
       </div>
     );
@@ -41,18 +34,15 @@ export default function ChatPanel({
   value = "",
   onChange,
   onSubmit,
-  onUpload,
   quickActions = [],
   isLoading = false,
   error = "",
   onClearError,
   statusLabel = "已自动保存",
   footerText = "行程已保存 · 刷新或分享后仍可恢复",
-  placeholder = "继续输入变化或订单…",
-  enableImageUpload = true,
+  placeholder = "继续输入变化或粘贴订单文字…",
 }) {
   const listRef = useRef(null);
-  const fileRef = useRef(null);
 
   useEffect(() => {
     const list = listRef.current;
@@ -70,12 +60,6 @@ export default function ChatPanel({
       event.preventDefault();
       handleSend();
     }
-  };
-
-  const handleFile = (event) => {
-    const file = event.target.files?.[0];
-    if (file) onUpload?.(file);
-    event.target.value = "";
   };
 
   return (
@@ -154,37 +138,6 @@ export default function ChatPanel({
         )}
 
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition-shadow focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200">
-          {enableImageUpload && (
-            <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={handleFile}
-              />
-              <button
-                type="button"
-                aria-label="上传图片"
-                disabled={isLoading}
-                onClick={() => fileRef.current?.click()}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.9}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-            </>
-          )}
           <input
             type="text"
             value={value}
@@ -217,11 +170,7 @@ export default function ChatPanel({
           </button>
         </div>
         <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-400">
-          <span>
-            {enableImageUpload
-              ? footerText
-              : "图片识别内测中，请粘贴文字提取锚点"}
-          </span>
+          <span>{footerText}</span>
           <span>{isLoading ? "处理中…" : "Enter 发送"}</span>
         </div>
       </div>
