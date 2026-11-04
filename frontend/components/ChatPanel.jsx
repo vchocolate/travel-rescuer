@@ -34,7 +34,6 @@ export default function ChatPanel({
   value = "",
   onChange,
   onSubmit,
-  quickActions = [],
   isLoading = false,
   error = "",
   onClearError,
@@ -103,22 +102,6 @@ export default function ChatPanel({
       </div>
 
       <div className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
-        {quickActions.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5 px-1">
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                disabled={isLoading}
-                onClick={action.onClick}
-                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {error && (
           <div
             role="alert"

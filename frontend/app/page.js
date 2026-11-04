@@ -206,15 +206,6 @@ export default function Home() {
     }
   }
 
-  function buildSampleOrder() {
-    const dayOne = displayBlocks.find(
-      (block) => block.day === 1 && block.date && block.date !== "待定",
-    );
-    const date = dayOne?.date ?? "待定";
-    const city = destination || "广州";
-    return `酒店已确认：入住日期 ${date}，15:00后入住${city}某酒店，地址${city}荔湾区。`;
-  }
-
   function handleNewTrip() {
     controller.resetTrip();
     setMessages(INITIAL_MESSAGES);
@@ -222,23 +213,6 @@ export default function Home() {
     setCopied(false);
     setShowDemo(false);
   }
-
-  const quickActions = controller.trip
-    ? [
-        {
-          label: "测试订单锚点",
-          onClick: () => void submitOrderText(buildSampleOrder()),
-        },
-        {
-          label: "下午下雨了",
-          onClick: () => void submitRecompute("下午下雨，调整户外安排"),
-        },
-        {
-          label: "查看替代方案",
-          onClick: () => void submitSearch("沙面附近有哪些室内场馆推荐？"),
-        },
-      ]
-    : [];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -338,7 +312,6 @@ export default function Home() {
           value={input}
           onChange={setInput}
           onSubmit={submitMessage}
-          quickActions={quickActions}
           isLoading={controller.isBusy}
           error={controller.error || ""}
           onClearError={controller.clearError}
