@@ -1,3 +1,9 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { useTripController } from "../hooks/useTripController";
+
 const STATUS = {
   normal: {
     label: "正常",
@@ -37,31 +43,10 @@ const STATUS = {
   },
 };
 
-const chatMessages = [
-  {
-    role: "user",
-    text: "周末去广州，喜欢历史文化，不想去太赶的景点。",
-  },
+const initialChatMessages = [
   {
     role: "ai",
-    text: "已生成两日时间轴。先确认一下：11月5日入住广州某酒店，这个安排我已经锁定为锚点。",
-    evidence: true,
-  },
-  {
-    role: "user",
-    text: "粘贴酒店确认文本",
-  },
-  {
-    role: "ai",
-    text: "已识别「广州某酒店」入住信息，并锁定为锚点。后续局部重算不会修改这个行程块。",
-  },
-  {
-    role: "user",
-    text: "下午下雨，调整户外安排",
-  },
-  {
-    role: "ai",
-    text: "收到。已保留锚点，14:00 的户外游览标记为受影响，并生成一个室内替代方案。",
+    text: "把旅行需求写在下面即可开始。生成行程后，可以继续测试订单、下雨重算和替代方案。",
   },
 ];
 
@@ -140,6 +125,46 @@ const timeline = [
 
 const legend = ["normal", "anchored", "affected", "candidate"];
 
+const STATUS_NOTES = {
+  normal: "可自由调整",
+  anchored: "已锁定 · 订单确认后不参与重算",
+  affected: "受变化影响 · 等待替代方案确认",
+  candidate: "替代方案 · 建议替换受影响的行程块",
+};
+
+function toTimelineDays(blocks) {
+  const groups = new Map();
+  for (const block of blocks) {
+    const dayBlocks = groups.get(block.day) || [];
+    dayBlocks.push({
+      id: block.block_id,
+      time: block.time_slot.split("-")[0] || block.time_slot,
+      timeSlot: block.time_slot,
+      title: block.activity,
+      location: block.location,
+      status: block.status,
+      note: STATUS_NOTES[block.status] || "",
+      isAnchor: block.is_anchor,
+    });
+    groups.set(block.day, dayBlocks);
+  }
+
+  return Array.from(groups.entries()).map(([day, dayBlocks]) => ({
+    day: `DAY ${day}`,
+    date: `第 ${day} 天`,
+    subtitle: "实时行程",
+    blocks: dayBlocks,
+  }));
+}
+
+function sourceName(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "原始来源";
+  }
+}
+
 function StatusIcon({ status, className }) {
   const shared = {
     className,
@@ -201,7 +226,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function EvidenceCard() {
+function EvidenceCard({ evidence }) {
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-teal-700">
@@ -223,14 +248,21 @@ function EvidenceCard() {
         证据卡
       </div>
       <p className="mt-1.5 text-sm font-semibold text-slate-800">
-        沙面攻略摘要
+        {evidence.title}
       </p>
       <p className="mt-1 text-xs leading-5 text-slate-600">
-        沙面岛适合傍晚散步，雨天可转入永庆坊室内展馆，沿街骑楼与展馆动线较短。
+        {evidence.summary}
       </p>
       <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px]">
-        <span className="truncate text-slate-500">来源：广州文旅</span>
-        <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-teal-700">
+        <span className="truncate text-slate-500">
+          来源：{sourceName(evidence.url)}
+        </span>
+        <a
+          className="inline-flex shrink-0 items-center gap-1 font-semibold text-teal-700"
+          href={evidence.url}
+          rel="noreferrer"
+          target="_blank"
+        >
           查看原文
           <svg
             className="h-3 w-3"
@@ -245,7 +277,7 @@ function EvidenceCard() {
             <path d="M7 17 17 7" />
             <path d="M9 7h8v8" />
           </svg>
-        </span>
+        </a>
       </div>
     </div>
   );
@@ -269,13 +301,15 @@ function ChatMessage({ message }) {
       </div>
       <div className="max-w-[85%] rounded-2xl rounded-tl-md border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-700 shadow-sm">
         {message.text}
-        {message.evidence ? <EvidenceCard /> : null}
+        {message.evidence?.map((item) => (
+          <EvidenceCard key={item.url} evidence={item} />
+        ))}
       </div>
     </div>
   );
 }
 
-function TimelineBlock({ block }) {
+function TimelineBlock({ block, affected }) {
   const config = STATUS[block.status];
 
   return (
@@ -291,7 +325,9 @@ function TimelineBlock({ block }) {
       </div>
       <div className="min-w-0 flex-1 pb-4">
         <div
-          className={`rounded-xl border p-3.5 transition-shadow hover:shadow-md sm:p-4 ${config.card} ${config.effect}`}
+          className={`rounded-xl border p-3.5 transition-shadow hover:shadow-md sm:p-4 ${config.card} ${config.effect} ${
+            affected ? "ring-2 ring-slate-400 ring-offset-2" : ""
+          }`}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -314,6 +350,137 @@ function TimelineBlock({ block }) {
 }
 
 export default function Home() {
+  const controller = useTripController();
+  const [messages, setMessages] = useState(initialChatMessages);
+  const [input, setInput] = useState("");
+  const [copied, setCopied] = useState(false);
+  const chatScrollRef = useRef(null);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({
+      top: chatScrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, controller.error]);
+
+  const timelineDays = useMemo(
+    () => (controller.trip ? toTimelineDays(controller.trip.blocks) : timeline),
+    [controller.trip],
+  );
+  const blockCount = controller.trip?.blocks.length ?? 8;
+  const dayCount = controller.trip
+    ? new Set(controller.trip.blocks.map((block) => block.day)).size
+    : 2;
+  const busyLabel =
+    controller.busyAction === "initialize"
+      ? "正在规划"
+      : controller.busyAction === "parse-order"
+        ? "正在解析订单"
+        : controller.busyAction === "recompute"
+          ? "正在重算"
+          : controller.busyAction === "search"
+            ? "正在检索"
+            : controller.busyAction === "load"
+              ? "正在恢复行程"
+              : controller.trip
+                ? "已自动保存"
+                : "Mock 演示";
+
+  async function submitMessage(value) {
+    const text = value.trim();
+    if (!text || controller.isBusy) return;
+
+    setInput("");
+    setMessages((current) => [...current, { role: "user", text }]);
+
+    if (!controller.trip) {
+      const nextTrip = await controller.initializeTrip(text);
+      if (nextTrip) {
+        setMessages([
+          { role: "user", text },
+          {
+            role: "ai",
+            text: `已生成第一天 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续填写订单，或点击“下午下雨了”查看局部重算。`,
+          },
+        ]);
+      }
+      return;
+    }
+
+    if (/(酒店|入住|车票|订单|确认)/.test(text)) {
+      const block = await controller.parseOrder(text);
+      if (block) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "ai",
+            text: `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`,
+          },
+        ]);
+      }
+      return;
+    }
+
+    if (/(雨|天气|台风|变化|影响)/.test(text)) {
+      const result = await controller.recompute(text);
+      if (result) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "ai",
+            text: result.changed_ids.length
+              ? "已经保留酒店锚点，并更新受影响的户外活动和替代方案。变化项已在右侧突出显示。"
+              : "已重新计算，但本次没有需要替换的行程项。",
+          },
+        ]);
+      }
+      return;
+    }
+
+    const results = await controller.search(text);
+    if (results?.length) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "ai",
+          text: `找到 ${results.length} 条证据，请查看来源后决定是否调整行程。`,
+          evidence: results,
+        },
+      ]);
+    } else if (results) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "ai",
+          text: "暂时没有找到可用证据，本次不会虚构攻略内容。",
+        },
+      ]);
+    }
+  }
+
+  async function copyShareLink() {
+    if (!controller.shareUrl) {
+      setMessages((current) => [
+        ...current,
+        { role: "ai", text: "请先生成或打开一份行程，再复制分享链接。" },
+      ]);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(controller.shareUrl);
+      setCopied(true);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "ai",
+          text: `当前浏览器无法自动复制，请手动复制：${controller.shareUrl}`,
+        },
+      ]);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
@@ -347,16 +514,19 @@ export default function Home() {
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-2 md:flex">
               <span className="text-sm font-semibold text-slate-700">
-                广州两日游
+                {dayCount === 2 ? "广州两日游" : "广州行程"}
               </span>
-              <span className="text-xs text-slate-400">11.05 — 11.06</span>
+              <span className="text-xs text-slate-400">
+                {controller.trip ? `${dayCount} 天安排` : "11.05 — 11.06"}
+              </span>
             </div>
             <span className="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 sm:inline-flex">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              已自动保存
+              {busyLabel}
             </span>
             <button
               type="button"
+              onClick={copyShareLink}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3"
             >
               <svg
@@ -372,7 +542,9 @@ export default function Home() {
                 <path d="M10 13a5 5 0 0 0 7.1.1l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7" />
                 <path d="M14 11a5 5 0 0 0-7.1-.1l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7" />
               </svg>
-              <span className="hidden sm:inline">复制链接</span>
+              <span className="hidden sm:inline">
+                {copied ? "已复制" : "复制链接"}
+              </span>
             </button>
           </div>
         </div>
@@ -394,38 +566,89 @@ export default function Home() {
               </div>
             </div>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-              Mock 演示
+              {busyLabel}
             </span>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_55%)] p-4 sm:p-5">
-            {chatMessages.map((message, index) => (
+          <div
+            ref={chatScrollRef}
+            className="flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_55%)] p-4 sm:p-5"
+          >
+            {messages.map((message, index) => (
               <ChatMessage key={index} message={message} />
             ))}
+            {controller.error ? (
+              <div
+                role="alert"
+                className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm text-rose-800"
+              >
+                <p>{controller.error}</p>
+                <button
+                  type="button"
+                  className="mt-2 text-xs font-semibold underline"
+                  onClick={controller.clearError}
+                >
+                  关闭提示
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
             <div className="mb-2 flex flex-wrap gap-1.5 px-1">
-              {["粘贴订单文本", "下午下雨了", "查看替代方案"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
-                >
-                  {label}
-                </button>
-              ))}
+              <button
+                type="button"
+                disabled={!controller.trip || controller.isBusy}
+                onClick={() =>
+                  void submitMessage(
+                    "酒店已确认：11月5日入住广州某酒店，离店11月6日，地址广州荔湾区。",
+                  )
+                }
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                测试订单锚点
+              </button>
+              <button
+                type="button"
+                disabled={!controller.trip || controller.isBusy}
+                onClick={() => void submitMessage("下午下雨，调整户外安排")}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                下午下雨了
+              </button>
+              <button
+                type="button"
+                disabled={!controller.trip || controller.isBusy}
+                onClick={() => void submitMessage("沙面附近有哪些室内场馆推荐？")}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                查看替代方案
+              </button>
             </div>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition-shadow focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200">
+            <form
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition-shadow focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitMessage(input);
+              }}
+            >
               <input
                 type="text"
-                placeholder="继续输入变化或订单…"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                disabled={controller.isBusy}
+                placeholder={
+                  controller.trip
+                    ? "输入变化、订单或攻略问题…"
+                    : "先描述你的旅行需求…"
+                }
                 className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
               />
               <button
-                type="button"
+                type="submit"
+                disabled={!input.trim() || controller.isBusy}
                 aria-label="发送"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white transition-colors hover:bg-slate-700"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <svg
                   className="h-4 w-4"
@@ -441,10 +664,14 @@ export default function Home() {
                   <path d="m6 11 6-6 6 6" />
                 </svg>
               </button>
-            </div>
+            </form>
             <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-400">
-              <span>演示数据 · 后续接入 /api/init_trip</span>
-              <span>Enter 发送</span>
+              <span>
+                {controller.trip
+                  ? "行程已保存 · 刷新或分享后仍可恢复"
+                  : "示例模式 · 首次发送会创建行程"}
+              </span>
+              <span>{controller.isBusy ? busyLabel : "Enter 发送"}</span>
             </div>
           </div>
         </section>
@@ -457,7 +684,7 @@ export default function Home() {
                   动态时间轴
                 </h2>
                 <p className="text-[11px] text-slate-400">
-                  广州两日游 · 共 8 个行程块
+                  广州行程 · 共 {blockCount} 个行程块
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -478,7 +705,7 @@ export default function Home() {
 
           <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-5">
             <div className="space-y-6">
-              {timeline.map((day) => (
+              {timelineDays.map((day) => (
                 <div key={day.day}>
                   <div className="mb-3 flex items-center gap-2.5">
                     <span className="rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold tracking-[0.12em] text-white">
@@ -494,7 +721,11 @@ export default function Home() {
                   </div>
                   <div>
                     {day.blocks.map((block) => (
-                      <TimelineBlock key={block.title + block.time} block={block} />
+                      <TimelineBlock
+                        key={block.id || block.title + block.time}
+                        block={block}
+                        affected={controller.lastChangedIds.includes(block.id)}
+                      />
                     ))}
                   </div>
                 </div>

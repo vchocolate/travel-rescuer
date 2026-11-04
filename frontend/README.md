@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 旅伴重构器前端
 
-## Getting Started
+当前版本已接入 B 的请求层、Mock 主链路和交互状态。
 
-First, run the development server:
+## 启动
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 `http://127.0.0.1:3000`。
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 环境变量
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+复制 `.env.example` 为 `.env.local`：
 
-## Learn More
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_USE_MOCK=true
+```
 
-To learn more about Next.js, take a look at the following resources:
+后端仍返回 501 时保持 `NEXT_PUBLIC_USE_MOCK=true`。真实接口可用后改为 `false`。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## B 已接入
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `POST /api/init_trip`：创建行程。
+- `GET /api/trip/{trip_id}`：刷新或分享链接恢复。
+- `POST /api/parse_order`：订单文本生成锚点。
+- `POST /api/recompute`：整体替换重算后的行程块并高亮 `changed_ids`。
+- `POST /api/search`：搜索证据卡。
+- `GET /health`：健康检查。
 
-## Deploy on Vercel
+请求层位于 `lib/api.js`，Mock 位于 `lib/mock-api.js`，交互状态位于
+`hooks/useTripController.js`。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 检查
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run build
+```
