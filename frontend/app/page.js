@@ -102,7 +102,7 @@ const STATUS_NOTES = {
   candidate: "替代方案 · 建议替换受影响的行程块",
 };
 
-function toTimelineDays(blocks) {
+function toTimelineDays(blocks, subtitle = "实时行程") {
   const groups = new Map();
   for (const block of blocks) {
     const dayBlocks = groups.get(block.day) || [];
@@ -132,7 +132,7 @@ function toTimelineDays(blocks) {
       dayBlocks[0]?.date && dayBlocks[0].date !== "待定"
         ? dayBlocks[0].date
         : `第 ${day} 天 · 日期待定`,
-    subtitle: "实时行程",
+    subtitle,
     blocks: dayBlocks,
   }));
 }
@@ -351,6 +351,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const chatScrollRef = useRef(null);
   const orderFileRef = useRef(null);
+  const actionLockRef = useRef(false);
 
   useEffect(() => {
     chatScrollRef.current?.scrollTo({
@@ -361,7 +362,10 @@ export default function Home() {
 
   const timelineDays = useMemo(
     () =>
-      toTimelineDays(controller.trip?.blocks || fallbackBlocks),
+      toTimelineDays(
+        controller.trip?.blocks || fallbackBlocks,
+        controller.trip ? "实时行程" : "示例预览",
+      ),
     [controller.trip],
   );
   const blockCount = controller.trip?.blocks.length ?? fallbackBlocks.length;
@@ -383,87 +387,103 @@ export default function Home() {
                 ? "已自动保存"
                 : "Mock 演示";
 
+  async function withPageAction(operation) {
+    if (actionLockRef.current) return null;
+    actionLockRef.current = true;
+    try {
+      return await operation();
+    } finally {
+      actionLockRef.current = false;
+    }
+  }
+
   async function submitMessage(value) {
     const text = value.trim();
-    if (!text || controller.isBusy) return;
+    if (!text || controller.isBusy) return null;
 
-    setInput("");
-    setMessages((current) => [...current, { role: "user", text }]);
+    return withPageAction(async () => {
+      setInput("");
+      setMessages((current) => [...current, { role: "user", text }]);
 
-    if (!controller.trip) {
-      const nextTrip = await controller.initializeTrip(text);
-      if (nextTrip) {
-        setMessages([
-          { role: "user", text },
+      if (!controller.trip) {
+        const nextTrip = await controller.initializeTrip(text);
+        if (nextTrip) {
+          setMessages([
+            { role: "user", text },
+            {
+              role: "ai",
+              text: `已生成共 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续填写变化，或使用下方按钮处理订单与搜索。`,
+            },
+          ]);
+        }
+        return;
+      }
+
+      const result = await controller.recompute(text);
+      if (result) {
+        setMessages((current) => [
+          ...current,
           {
             role: "ai",
-            text: `已生成共 ${nextTrip.blocks.length} 项安排，并保存为当前行程。你可以继续填写变化，或使用下方按钮处理订单与搜索。`,
+            text:
+              result.message ||
+              (result.changed_ids.length
+                ? "已经保留锚点并更新受影响的活动。变化项已在右侧突出显示。"
+                : "已重新计算，但本次没有需要替换的行程项。"),
           },
         ]);
       }
-      return;
-    }
-
-    const result = await controller.recompute(text);
-    if (result) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: "ai",
-          text:
-            result.message ||
-            (result.changed_ids.length
-              ? "已经保留锚点并更新受影响的活动。变化项已在右侧突出显示。"
-              : "已重新计算，但本次没有需要替换的行程项。"),
-        },
-      ]);
-    }
+    });
   }
 
   async function submitOrderText(orderText) {
     if (!orderText.trim() || controller.isBusy || !controller.trip) return;
-    setMessages((current) => [
-      ...current,
-      { role: "user", text: orderText },
-    ]);
-    const result = await controller.parseOrder({ orderText });
-    const block = result?.new_block;
-    if (result) {
+    return withPageAction(async () => {
       setMessages((current) => [
         ...current,
-        {
-          role: "ai",
-          text:
-            result.success && block
-              ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
-              : "订单缺少日期、时间或地点，已加入行程并标记为待确认，不会误锁为锚点。",
-        },
+        { role: "user", text: orderText },
       ]);
-    }
+      const result = await controller.parseOrder({ orderText });
+      const block = result?.new_block;
+      if (result) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "ai",
+            text:
+              result.success && block
+                ? `已识别「${block.activity}」并锁定为锚点。之后调整行程时，这一项不会被自动修改。`
+                : "订单缺少日期、时间或地点，已加入行程并标记为待确认，不会误锁为锚点。",
+          },
+        ]);
+      }
+    });
   }
 
   async function submitSearch(query) {
     if (!query.trim() || controller.isBusy || !controller.trip) return;
-    setMessages((current) => [...current, { role: "user", text: query }]);
-    const results = await controller.search(query);
-    if (results?.length) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: "ai",
-          text: `找到 ${results.length} 条证据，请查看来源后决定是否调整行程。`,
-          evidence: results,
-        },
-      ]);
-    } else if (results) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: "ai",
-          text: "暂时没有找到可用证据，本次不会虚构攻略内容。",
-        },
-      ]);
-    }
+    return withPageAction(async () => {
+      setMessages((current) => [...current, { role: "user", text: query }]);
+      const results = await controller.search(query);
+      if (results?.length) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "ai",
+            text: `找到 ${results.length} 条证据，请查看来源后决定是否调整行程。`,
+            evidence: results,
+          },
+        ]);
+      } else if (results) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "ai",
+            text: "暂时没有找到可用证据，本次不会虚构攻略内容。",
+          },
+        ]);
+      }
+    });
   }
 
   async function uploadOrderImage(file) {
@@ -476,42 +496,44 @@ export default function Home() {
       return;
     }
 
-    setMessages((current) => [
-      ...current,
-      { role: "user", text: `上传订单截图：${file.name}` },
-    ]);
+    return withPageAction(async () => {
+      setMessages((current) => [
+        ...current,
+        { role: "user", text: `上传订单截图：${file.name}` },
+      ]);
 
-    let dataUrl;
-    try {
-      dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("图片读取失败"));
-        reader.readAsDataURL(file);
+      let dataUrl;
+      try {
+        dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("图片读取失败"));
+          reader.readAsDataURL(file);
+        });
+      } catch {
+        setMessages((current) => [
+          ...current,
+          { role: "ai", text: "图片读取失败，请重新选择订单截图。" },
+        ]);
+        return;
+      }
+      const imageBase64 = dataUrl.split(",")[1] || "";
+      const result = await controller.parseOrder({
+        imageBase64,
+        imageMimeType: file.type,
       });
-    } catch {
-      setMessages((current) => [
-        ...current,
-        { role: "ai", text: "图片读取失败，请重新选择订单截图。" },
-      ]);
-      return;
-    }
-    const imageBase64 = dataUrl.split(",")[1] || "";
-    const result = await controller.parseOrder({
-      imageBase64,
-      imageMimeType: file.type,
+      if (result) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "ai",
+            text: result.success
+              ? `已从截图中识别「${result.new_block.activity}」并锁定为锚点。`
+              : "已读取截图，但时间或地点不完整，请在行程中确认后再使用。",
+          },
+        ]);
+      }
     });
-    if (result) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: "ai",
-          text: result.success
-            ? `已从截图中识别「${result.new_block.activity}」并锁定为锚点。`
-            : "已读取截图，但时间或地点不完整，请在行程中确认后再使用。",
-        },
-      ]);
-    }
   }
 
   async function copyShareLink() {
