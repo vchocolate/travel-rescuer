@@ -4,8 +4,15 @@ import { STATUS } from "./StatusBadge";
 
 const LEGEND = ["normal", "anchored", "affected", "candidate"];
 
-export default function Timeline({ blocks = [], changedIds = [] }) {
+export default function Timeline({
+  blocks = [],
+  changedIds = [],
+  title = "行程安排",
+  isDemo = false,
+  blockCount,
+}) {
   const days = groupByDay(blocks);
+  const total = blockCount ?? blocks.length;
 
   return (
     <section className="flex min-h-[600px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-h-0">
@@ -14,7 +21,7 @@ export default function Timeline({ blocks = [], changedIds = [] }) {
           <div>
             <h2 className="text-sm font-semibold text-slate-900">动态时间轴</h2>
             <p className="text-[11px] text-slate-400">
-              广州两日游 · 共 {blocks.length} 个行程块 · 演示数据
+              {title} · 共 {total} 个行程块{isDemo ? " · 演示数据" : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">

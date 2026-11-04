@@ -1,4 +1,4 @@
-// 演示数据：字段严格按 API_CONTRACT.md v0.3（字段冻结）定义。
+// 演示数据：字段严格按 API_CONTRACT.md v0.7 定义。
 // Day 1 用契约第 5 节的原样 4 个块；Day 2 用于演示按 day 分组与「订单原文时间」。
 // 全部为演示样例，不含真实订单号与手机号。
 
@@ -113,7 +113,7 @@ export const mockMessages = [
     id: "m4",
     role: "ai",
     text: "检索到以下来源，亮点与避坑提示如下。具体以原文为准。",
-    results: mockResults,
+    evidence: mockResults,
   },
   {
     id: "m5",

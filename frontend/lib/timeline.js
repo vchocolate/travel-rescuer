@@ -56,9 +56,17 @@ export function groupByDay(blocks = []) {
   return days;
 }
 
-/** parse_order 失败或时间/地点为空（或后端返回「待定」）时，不能当锚点，显示「待确认」。 */
+/** parse_order 失败或日期/时间/地点缺失（或后端返回「待定」）时，不能当锚点，显示「待确认」。 */
 export function isPending(block) {
+  const date = block.date?.trim() ?? "";
   const time = block.time_slot?.trim() ?? "";
   const place = block.location?.trim() ?? "";
-  return !time || !place || time === PENDING || place === PENDING;
+  return (
+    !date ||
+    !time ||
+    !place ||
+    date === PENDING ||
+    time === PENDING ||
+    place === PENDING
+  );
 }

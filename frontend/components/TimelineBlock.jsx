@@ -5,6 +5,8 @@ export default function TimelineBlock({ block, isChanged = false }) {
   const config = STATUS[block.status] ?? STATUS.normal;
   const { top, bottom } = splitTimeSlot(block.time_slot);
   const pending = isPending(block);
+  // 契约 v0.7：date 缺失时后端返回「待定」，需要单独提示
+  const datePending = !block.date || block.date.trim() === "待定";
   // 契约：锁定逻辑看 is_anchor；待确认的块即使 is_anchor 为真也不能显示成锚点
   const locked = block.is_anchor && !pending;
 
@@ -39,6 +41,11 @@ export default function TimelineBlock({ block, isChanged = false }) {
               <h3 className="mt-0.5 text-sm font-semibold leading-5 text-slate-900 sm:text-[15px]">
                 {block.activity}
               </h3>
+              {datePending && (
+                <span className="mt-1 inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                  日期待定
+                </span>
+              )}
             </div>
 
             {pending ? (
@@ -51,7 +58,7 @@ export default function TimelineBlock({ block, isChanged = false }) {
           </div>
 
           <p className={`mt-2 text-xs leading-5 ${pending ? "text-slate-500" : config.note}`}>
-            {pending ? "缺少时间或地点 · 确认后才会锁定为锚点" : config.hint}
+            {pending ? "缺少日期、时间或地点 · 确认后才会锁定为锚点" : config.hint}
           </p>
 
           {locked && (
