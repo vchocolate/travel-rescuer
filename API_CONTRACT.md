@@ -1,8 +1,10 @@
-# Travel Rescuer API 契约 v0.7
+# Travel Rescuer API 契约 v0.8
 
-状态：**最终版，字段冻结；v0.7 新增 BlockSchema.date**。
+状态：**最终版，字段冻结；v0.8 新增意图、普通日程、block 操作接口与行程上下文搜索**。
 
-- 已实现全部 5 个接口：`POST /api/init_trip`、`POST /api/parse_order`（文本/图片）、`POST /api/search`（博查）、`GET /api/trip/{trip_id}`、`POST /api/recompute`。
+- 已实现全部 8 个接口：`POST /api/init_trip`、`GET /api/trip/{trip_id}`、`POST /api/parse_order`、`POST /api/search`、`POST /api/recompute`、`POST /api/trip/{trip_id}/intent`、`POST /api/trip/{trip_id}/schedule`、`POST /api/trip/{trip_id}/update`。
+- 意图由后端 LLM 判断，前端不做关键词正则路由；`order` / `schedule` / `recompute` / `search` / `clarify` 五种结果由前端分发。
+- 普通日程永远不自动锚定；订单只有在日期命中当前行程且日期/时间/地点完整时才可锚定。
 - `date`：新 AI 数据一律使用 `YYYY-MM-DD`。`BlockSchema.date` 默认 `待定`；数据库中的 `null` / 空字符串在返回前端前统一序列化为 `待定`。`init_trip` 生成日期，`parse_order` 提取日期，`recompute` 保留锚点日期并为候选块生成 ISO 日期。
 - `recompute`：锚点绝对保护（含 date）；无锚点可调时返回原状态和提示；模型异常/JSON 校验失败/锚点篡改返回 `400`，服务不可用返回 `503`，不写脏数据。
 - `get_trip`：无效 UUID、行程不存在、行程无 blocks 均返回 `404 {"detail": "Trip not found"}`；数据库不可用返回 `503`。
@@ -16,7 +18,7 @@
 | Base URL（本地） | `http://127.0.0.1:8000` |
 | 请求/响应 | `application/json; charset=utf-8` |
 | 鉴权 | 无登录；`trip_id` 即行程访问凭证 |
-| CORS | 已允许 `http://localhost:3000`、`http://127.0.0.1:3000` |
+| CORS | 已允许 `http://localhost:3000`、`http://127.0.0.1:3000`、`http://localhost:3001`、`http://127.0.0.1:3001` |
 | `trip_id` | UUID 字符串 |
 | `block_id` | 字符串。正式环境为 UUID 字符串；Mock 可用 `b1`、`b2` |
 | 错误格式 | `{"detail": "..."}`；参数校验失败为 `422`，`detail` 是数组 |
@@ -68,9 +70,12 @@ normal | anchored | affected | candidate
     "location": "广州市荔湾区恩宁路123号",
     "is_anchor": true,
     "status": "anchored"
-  }
+  },
+  "message": null
 }
 ```
+
+`message` 可选，用于说明订单未锚定、日期不在行程内或信息不完整的原因。
 
 ### SearchResponse
 
@@ -94,6 +99,48 @@ normal | anchored | affected | candidate
 }
 ```
 
+### IntentResponse
+
+```json
+{
+  "intent": "schedule",
+  "message": null
+}
+```
+
+`intent` 枚举：`order | schedule | recompute | search | clarify`。
+
+### ScheduleResponse
+
+```json
+{
+  "success": true,
+  "new_block": {
+    "block_id": "b1",
+    "day": 4,
+    "date": "2026-11-08",
+    "time_slot": "",
+    "activity": "去朋友家",
+    "location": "",
+    "is_anchor": false,
+    "status": "normal"
+  },
+  "message": "日期不在当前行程范围内，已作为普通日程加入，未锁定锚点。"
+}
+```
+
+### UpdateBlockRequest
+
+```json
+{
+  "action": "confirm_replace",
+  "block_id": "old-affected-id",
+  "target_block_id": "candidate-id"
+}
+```
+
+`action` 枚举：`delete | lock | unlock | confirm_replace`；`target_block_id` 仅 `confirm_replace` 必填。
+
 ## 3. 接口总览
 
 | 方法 | 路径 | 用途 | 请求模型 | 成功响应 | 状态 |
@@ -101,8 +148,11 @@ normal | anchored | affected | candidate
 | POST | `/api/init_trip` | 生成初始行程 | `InitTripRequest` | `TripState` | 已实现 |
 | GET | `/api/trip/{trip_id}` | 读取完整行程 | 路径参数 `trip_id` | `TripState` | 已实现 |
 | POST | `/api/parse_order` | 解析订单并生成锚点 | `ParseOrderRequest` | `ParseOrderResponse` | 已实现 |
-| POST | `/api/search` | 检索并生成证据 | `SearchRequest` | `SearchResponse[]` | 已实现（需 `BOCHA_API_KEY`） |
+| POST | `/api/search` | 检索并生成证据；可选 `trip_id` 注入行程上下文 | `SearchRequest` | `SearchResponse[]` | 已实现（需 `BOCHA_API_KEY`） |
 | POST | `/api/recompute` | 突发变化后的局部重算 | `RecomputeRequest` | `RecomputeResponse` | 已实现 |
+| POST | `/api/trip/{trip_id}/intent` | 后端 LLM 判断用户意图 | `IntentRequest` | `IntentResponse` | 已实现 |
+| POST | `/api/trip/{trip_id}/schedule` | 记录普通日程，生成 normal 卡片 | `ScheduleRequest` | `ScheduleResponse` | 已实现 |
+| POST | `/api/trip/{trip_id}/update` | 删除 / 锁定 / 解锁 / 采用替代方案 | `UpdateBlockRequest` | `TripState` | 已实现 |
 
 ## 4. 接口示例
 
@@ -194,8 +244,10 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 
 行为：
 
-- 日期、时间、地点、活动名称齐全：`success=true`，块为锚点，写入数据库。
+- 日期命中当前行程、且日期/时间/地点/活动名称齐全：`success=true`，块为锚点，写入数据库。
+- 日期不在当前行程范围内：仍写入数据库并返回 `200`，但强制 `success=false`、`is_anchor=false`、`status=normal`；按行程起始日计算 `day`，并返回明确 `message`，绝不误锁锚点。
 - 日期、时间或地点缺失：仍写入数据库并返回 `200`，但 `success=false`、`is_anchor=false`、`status=normal`；`new_block` 的 `time_slot/location` 为空字符串，`date` 由兜底逻辑返回 `待定`。
+- `day` 会根据当前 Trip 的日期校正；行程外日期会落到对应的新 Day，保证前端能渲染出新卡片。
 - 活动名称缺失：`422`，不写入数据库。
 - 图片模式需要配置 `VISION_LLM_*`；当前项目使用 Kimi `kimi-k3.1-pro`，支持图片。未配置视觉模型返回 `501`。
 - 其他错误：行程不存在 `404`；LLM 未配置 `503`；模型调用或 Schema 校验失败 `502`；图片超过 5MB 返回 `413`。
@@ -275,6 +327,75 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 - 无受影响块：返回 `200` 原状态，`message="未识别到需要调整的非锚点行程"`。
 - 错误：模型调用失败/数据库失败 `503`；JSON 校验失败/锚点篡改/结果结构非法 `400`；行程不存在 `404`。所有失败均回滚，不会写入脏数据。
 
+### 4.6 POST `/api/trip/{trip_id}/intent`
+
+请求：
+
+```json
+{
+  "text": "帮我记一下11月8日去朋友家"
+}
+```
+
+响应 `200`：
+
+```json
+{
+  "intent": "schedule",
+  "message": null
+}
+```
+
+行为：
+
+- 读取当前 Trip blocks，把紧凑行程上下文和用户文本交给后端意图模型。
+- 返回 `order`、`schedule`、`recompute`、`search`、`clarify` 之一；`clarify` 可在 `message` 中给出追问。
+- 意图接口只做判断，不写数据库；前端根据 `intent` 调用对应接口。
+- 错误：行程不存在 `404`；LLM 未配置 `503`；LLM 调用失败 `502`。
+
+### 4.7 POST `/api/trip/{trip_id}/schedule`
+
+请求：
+
+```json
+{
+  "text": "帮我记一下11月8日去朋友家"
+}
+```
+
+响应 `200`：`ScheduleResponse`。
+
+行为：
+
+- LLM 抽取普通日程的 `date / time_slot / activity / location`，写入真实数据库。
+- 普通日程永远是 `status=normal`、`is_anchor=false`，即使字段完整也不会自动锚定。
+- 日期不在当前行程范围内时，按行程起始日计算新 `day`，卡片照常渲染并返回提示。
+- 日期未识别时仍写入待确认卡片，并提示补充日期。
+- 活动名称无法识别时返回 `422`；行程不存在 `404`；LLM/DB 失败按 `502/503` 返回。
+
+### 4.8 POST `/api/trip/{trip_id}/update`
+
+请求：
+
+```json
+{
+  "action": "confirm_replace",
+  "block_id": "old-affected-id",
+  "target_block_id": "candidate-id"
+}
+```
+
+响应 `200`：完整 `TripState`。
+
+行为：
+
+- `delete`：从数据库删除 `block_id`。
+- `lock`：`block_id` 的 `is_anchor=true`，`status=anchored`。
+- `unlock`：`block_id` 的 `is_anchor=false`，`status=normal`。
+- `confirm_replace`：删除 `block_id`（旧 affected 卡片），把 `target_block_id` 的 candidate 状态改为 `normal`；目标必须是 candidate。
+- 所有操作在事务内完成；提交后重新查询该 Trip 的全部 blocks，严格返回 `TripState`。
+- 错误：行程或 block 不存在 `404`；目标不是 candidate、缺少 target、自引用 `400`；数据库异常 `500`。
+
 ## 5. Mock 数据
 
 `GET /api/trip/{trip_id}` 的 Mock：
@@ -353,7 +474,11 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 ## 7. 给队友 B（联调）的规则
 
 - 新增 `NEXT_PUBLIC_API_BASE_URL`，默认 `http://127.0.0.1:8000`。
-- 后端全部接口可用：`init_trip`、`parse_order`（文本/图片）、`search`、`get_trip`、`recompute`。前端演示只使用文本订单，图片上传入口已移除。
+- 后端全部接口可用：`init_trip`、`parse_order`（文本/图片）、`search`、`get_trip`、`recompute`、`intent`、`schedule`、`update`。前端演示只使用文本订单，图片上传入口已移除。
+- `intent` 只返回意图，不写数据库；前端按 `order → parse_order`、`schedule → schedule`、`recompute → recompute`、`search → search`、`clarify → message` 分发，不再使用前端关键词正则。
+- `schedule` 永远生成 `normal` 卡片，不自动锚定；行程外日期会分配新 Day，并返回提示。
+- `parse_order` 只有日期命中当前行程且日期/时间/地点完整时才会返回锚点；行程外日期返回 `normal` 和 `message`，不要把它显示成已锁定。
+- `update` 返回完整 `TripState`；前端请求期间禁用操作按钮，成功后直接覆盖当前 state。`confirm_replace` 会删除旧 affected 块并把 candidate 改为 normal。
 - `get_trip` 找不到时统一返回 `404 "Trip not found"`，不要重试；数据库不可用为 `503`。
 - `search` 可能返回空数组（博查或 LLM 失败）；显示“暂无证据”，不要自动重试风暴；最长约 105 秒。请求可带可选 `trip_id` 让后端补齐当前城市上下文；不传时行为不变。
 - `recompute` 可能耗时 10–120 秒；`400` 表示模型结果/锚点保护失败，`503` 表示服务不可用。`changed_ids` 中是旧受影响块 ID + 新候选块 ID；锚点不会出现。`message` 可为空字符串或提示文案。
@@ -372,4 +497,5 @@ GET /api/trip/123e4567-e89b-12d3-a456-426614174000
 - v0.5：`get_trip` 实现；`joinedload` 单查询；404/503；路径固定为 `/api/trip/{trip_id}`。
 - v0.6：`recompute` 实现；事务落库；锚点断言；`RecomputeResponse.message`；400/503 兜底。
 - v0.7：`BlockSchema.date`；`init_trip` 生成日期、`parse_order` 提取日期、`recompute` 保留/生成日期；锚点断言加入 `date`；数据库 `blocks` 新增 `date` 列；历史 `null` / 空字符串统一兜底为 `待定`；新 AI 日期强制 `YYYY-MM-DD`。
+- v0.8：新增后端 LLM 意图路由、普通日程接口和 block 操作接口；`parse_order` 增加行程日期校验与 `message`；`search` 支持可选 `trip_id` 注入当前行程城市上下文；锁/解锁/采用替代方案返回完整 `TripState`。
 - 已接入 `model_json_schema()` 注入 System Prompt 与 `model_validate_json()` 强校验。

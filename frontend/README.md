@@ -30,17 +30,25 @@ NEXT_PUBLIC_USE_MOCK=false
 
 - `POST /api/init_trip`：创建行程。
 - `GET /api/trip/{trip_id}`：刷新或分享链接恢复。
-- `POST /api/parse_order`：订单文本生成锚点。
+- `POST /api/trip/{trip_id}/intent`：后端 LLM 判断用户意图。
+- `POST /api/parse_order`：订单文本生成锚点；行程外日期只生成 normal 卡片。
+- `POST /api/trip/{trip_id}/schedule`：记录普通日程，永不自动锚定。
+- `POST /api/trip/{trip_id}/update`：删除 / 锁定 / 解锁 / 采用替代方案。
 - `POST /api/recompute`：整体替换重算后的行程块并高亮 `changed_ids`。
-- `POST /api/search`：搜索证据卡。
+- `POST /api/search`：搜索证据卡；可带 `trip_id` 注入当前城市上下文。
 - `GET /health`：健康检查。
 
 请求层位于 `lib/api.js`，Mock 位于 `lib/mock-api.js`，交互状态位于
 `hooks/useTripController.js`。
 
-接口版本为 v0.7：创建请求使用 `query`；行程块支持 `date` 和 `待定`；订单响应使用
-`{ success, new_block }`；重算请求使用 `change_desc`，响应使用
-`{ changed_ids, trip_state }`；搜索结果使用 `highlights` 和 `pitfalls`。
+接口版本为 v0.8：创建请求使用 `query`；行程块支持 `date` 和 `待定`；订单响应使用
+`{ success, new_block, message }`；意图响应使用 `{ intent, message }`；日程响应使用
+`{ success, new_block, message }`；重算请求使用 `change_desc`，响应使用
+`{ changed_ids, trip_state }`；block 操作响应为完整 `TripState`；搜索结果使用
+`highlights` 和 `pitfalls`，并可携带可选 `trip_id`。
+
+用户输入先经过后端 `/intent` 判断，前端不保存或猜测意图正则。普通日程永远是
+`normal`，只有符合当前行程日期且字段完整的订单才会成为锚点。
 
 ## 检查
 
